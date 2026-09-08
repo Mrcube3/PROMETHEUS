@@ -288,6 +288,25 @@ def create_app() -> FastAPI:
             )
         return passport(row, db)
 
+    @app.get("/api/outcomes", tags=["audit"])
+    def outcomes(limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+        """Resolved outcomes joined to the predictions that earned them.
+
+        Every row pairs what was predicted -- frozen and hashed beforehand -- with
+        what the market actually did. Losses are listed alongside wins; there is no
+        filter parameter that could hide them.
+        """
+        rows = db.query(
+            "SELECT o.outcome_id, o.signal_id, o.resolved_at, o.entry_price, o.exit_price,"
+            "       o.raw_return, o.directional, o.resolution_source, o.methodology,"
+            "       s.asset, s.horizon, s.direction, s.confidence, s.model_provider,"
+            "       s.model_version, s.signal_hash, s.state, s.environment"
+            "  FROM outcomes o JOIN signals s ON s.signal_id = o.signal_id"
+            " ORDER BY o.resolved_at DESC LIMIT ?",
+            (limit,),
+        )
+        return {"count": len(rows), "outcomes": [dict(r) for r in rows]}
+
     @app.get("/api/journal", tags=["audit"])
     def journal(limit: int = Query(100, ge=1, le=1000), signal_id: str | None = None) -> dict[str, Any]:
         sql = "SELECT * FROM journal"

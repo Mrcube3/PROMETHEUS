@@ -34,8 +34,9 @@
   td{padding:8px 9px;border-bottom:1px solid #1b1f28;vertical-align:top}
   tr:last-child td{border-bottom:none}
   .mono{font-family:var(--mono);font-size:11.5px}
-  .pill{display:inline-block;padding:2px 8px;border-radius:11px;font-size:10.5px;
-        font-weight:600;letter-spacing:.06em;border:1px solid transparent}
+  .pill{display:inline-block;padding:2px 7px;border-radius:11px;font-size:10px;
+        font-weight:600;letter-spacing:.04em;border:1px solid transparent;
+        white-space:nowrap}
   .LONG{color:var(--long);background:rgba(46,204,113,.11);border-color:rgba(46,204,113,.3)}
   .SHORT{color:var(--short);background:rgba(255,92,92,.11);border-color:rgba(255,92,92,.3)}
   .NEUTRAL,.STAND_DOWN{color:var(--dim);background:rgba(139,149,167,.1);border-color:rgba(139,149,167,.28)}
@@ -50,9 +51,10 @@
   .kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;
       border-bottom:1px solid #1b1f28;font-size:12.5px}
   .kv:last-child{border-bottom:none}
-  .kv span:first-child{color:var(--faint)}
+  .kv span:first-child{color:var(--faint);min-width:0;flex:1 1 auto}
   .kv span:last-child{font-family:var(--mono);font-size:11.5px;text-align:right;
-                      word-break:break-all;max-width:62%}
+                      word-break:break-all;flex:0 1 auto;min-width:0}
+  .kv span:last-child .pill{word-break:normal}
   .scroll{overflow-x:auto}
   footer{padding:18px 26px;color:var(--faint);font-size:11.5px;border-top:1px solid var(--line);margin-top:26px}
   .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
@@ -206,18 +208,21 @@ async function tick() {
         <td class="mono">${shortHash(x.signal_hash)}</td></tr>`).join('')
     : '<tr><td colspan="8" class="muted">No signals currently listed.</td></tr>';
 
-  const outs = await j('/api/journal?limit=200');
-  const scored = (outs ? outs.entries : []).filter(x => x.event === 'OUTCOME_RECORDED');
-  document.querySelector('#outcomes tbody').innerHTML = scored.length
-    ? scored.slice(0, 14).map(x => {
-        const p = x.payload, r = parseFloat(p.raw_return);
-        const cls = p.directional === 'CORRECT' ? 'ok' : p.directional === 'INCORRECT' ? 'bad' : 'mid';
-        return `<tr><td class="mono">${esc((x.signal_id || '').slice(0, 14))}</td>
-          <td colspan="2" class="muted">&mdash;</td><td class="muted">&mdash;</td>
-          <td class="mono">${esc(p.entry)}</td><td class="mono">${esc(p.exit)}</td>
+  const oc = await j('/api/outcomes?limit=14');
+  document.querySelector('#outcomes tbody').innerHTML = (oc && oc.outcomes.length)
+    ? oc.outcomes.map(x => {
+        const r = parseFloat(x.raw_return);
+        const cls = x.directional === 'CORRECT' ? 'ok'
+                  : x.directional === 'INCORRECT' ? 'bad' : 'mid';
+        return `<tr><td class="mono">${esc(x.signal_id.slice(0, 14))}</td>
+          <td>${esc(x.asset)}</td>
+          <td><span class="pill ${esc(x.direction)}">${esc(x.direction)}</span></td>
+          <td class="mono">${esc(x.confidence)}</td>
+          <td class="mono">${esc(x.entry_price)}</td>
+          <td class="mono">${esc(x.exit_price)}</td>
           <td class="mono" style="color:${r > 0 ? 'var(--long)' : r < 0 ? 'var(--short)' : 'var(--dim)'}">
             ${(r * 100).toFixed(4)}%</td>
-          <td><span class="pill ${cls}">${esc(p.directional)}</span></td></tr>`;
+          <td><span class="pill ${cls}">${esc(x.directional)}</span></td></tr>`;
       }).join('')
     : '<tr><td colspan="8" class="muted">No signal has matured yet. Outcomes appear here once a horizon expires.</td></tr>';
 
