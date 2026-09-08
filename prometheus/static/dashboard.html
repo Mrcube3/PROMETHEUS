@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROMETHEUS — Autonomous Signal Economy</title>
+<style>
+  :root{
+    --bg:#0a0c10; --panel:#12151c; --panel2:#171b24; --line:#242a36;
+    --ink:#e6e9ef; --dim:#8b95a7; --faint:#5d6779;
+    --long:#2ecc71; --short:#ff5c5c; --warn:#f5a524; --acc:#5b8cff; --sim:#a855f7;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  a{color:var(--acc)}
+  header{padding:22px 26px;border-bottom:1px solid var(--line);
+         display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+  h1{margin:0;font-size:19px;letter-spacing:.16em;font-weight:600}
+  .tag{color:var(--dim);font-size:12px;letter-spacing:.05em}
+  .wrap{padding:22px 26px;max-width:1500px}
+  .grid{display:grid;gap:14px}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(430px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px 17px}
+  .card h2{margin:0 0 12px;font-size:11px;letter-spacing:.14em;color:var(--dim);
+           text-transform:uppercase;font-weight:600}
+  .big{font-size:27px;font-weight:600;font-family:var(--mono)}
+  .sub{color:var(--faint);font-size:11.5px;margin-top:5px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;color:var(--faint);font-weight:500;font-size:10.5px;
+     letter-spacing:.1em;text-transform:uppercase;padding:7px 9px;border-bottom:1px solid var(--line)}
+  td{padding:8px 9px;border-bottom:1px solid #1b1f28;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:11px;font-size:10.5px;
+        font-weight:600;letter-spacing:.06em;border:1px solid transparent}
+  .LONG{color:var(--long);background:rgba(46,204,113,.11);border-color:rgba(46,204,113,.3)}
+  .SHORT{color:var(--short);background:rgba(255,92,92,.11);border-color:rgba(255,92,92,.3)}
+  .NEUTRAL,.STAND_DOWN{color:var(--dim);background:rgba(139,149,167,.1);border-color:rgba(139,149,167,.28)}
+  .ok{color:var(--long);background:rgba(46,204,113,.11);border-color:rgba(46,204,113,.3)}
+  .bad{color:var(--short);background:rgba(255,92,92,.11);border-color:rgba(255,92,92,.3)}
+  .mid{color:var(--warn);background:rgba(245,165,36,.11);border-color:rgba(245,165,36,.3)}
+  .sim{color:var(--sim);background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.32)}
+  .banner{margin:0 26px 18px;padding:11px 15px;border-radius:8px;font-size:12.5px;
+          background:rgba(168,85,247,.09);border:1px solid rgba(168,85,247,.3);color:#d8b4fe}
+  .banner b{color:#efe0ff}
+  .muted{color:var(--dim)}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;
+      border-bottom:1px solid #1b1f28;font-size:12.5px}
+  .kv:last-child{border-bottom:none}
+  .kv span:first-child{color:var(--faint)}
+  .kv span:last-child{font-family:var(--mono);font-size:11.5px;text-align:right;
+                      word-break:break-all;max-width:62%}
+  .scroll{overflow-x:auto}
+  footer{padding:18px 26px;color:var(--faint);font-size:11.5px;border-top:1px solid var(--line);margin-top:26px}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+  .live{background:var(--long)} .off{background:var(--short)} .amber{background:var(--warn)}
+</style>
+</head>
+<body>
+<header>
+  <h1>PROMETHEUS</h1>
+  <span class="tag">PREDICT &middot; SELL &middot; PROVE &middot; REPEAT</span>
+  <span class="tag" id="envline"></span>
+</header>
+
+<div class="banner" id="banner">Loading environment&hellip;</div>
+
+<div class="wrap">
+  <div class="grid g4" id="kpis"></div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h2>Provider status &mdash; verified, not assumed</h2>
+      <div id="providers"></div>
+    </div>
+    <div class="card">
+      <h2>Settlement</h2>
+      <div id="settlement"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>Marketplace &mdash; protected intelligence, priced</h2>
+    <div class="scroll"><table id="mkt">
+      <thead><tr><th>Signal</th><th>Asset</th><th>Horizon</th><th>Price</th>
+      <th>Matures</th><th>State</th><th>Pricing</th><th>Signal hash</th></tr></thead>
+      <tbody></tbody></table></div>
+    <div class="sub">Direction, confidence, thesis, evidence and invalidation are absent from this
+      table by construction &mdash; they are released only after verified settlement.</div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>Resolved track record &mdash; predictions vs reality</h2>
+    <div class="scroll"><table id="outcomes">
+      <thead><tr><th>Signal</th><th>Asset</th><th>Dir</th><th>Conf</th>
+      <th>Entry</th><th>Exit</th><th>Return</th><th>Result</th></tr></thead>
+      <tbody></tbody></table></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card">
+      <h2>Reputation &mdash; sample size always shown</h2>
+      <div id="rep"></div>
+    </div>
+    <div class="card">
+      <h2>Rejected drafts &mdash; what was refused</h2>
+      <div class="scroll"><table id="rej">
+        <thead><tr><th>When</th><th>Asset</th><th>Reason</th><th>Detail</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>Journal &mdash; append-only</h2>
+    <div class="scroll"><table id="jrnl">
+      <thead><tr><th>Seq</th><th>When</th><th>Event</th><th>Signal</th><th>Detail</th></tr></thead>
+      <tbody></tbody></table></div>
+  </div>
+</div>
+
+<footer>
+  Market data: Binance public spot endpoints (read-only; no API key, no account, no order or
+  withdrawal capability). Payments: x402 v1. Every figure on this page is computed from resolved
+  outcomes &mdash; none is seeded, backfilled or simulated except where explicitly labelled.
+  <a href="/docs">OpenAPI</a> &middot; <a href="/provider-status">provider status</a> &middot;
+  <a href="/api/reputation">reputation JSON</a>
+</footer>
+
+<script>
+const j = (u) => fetch(u).then(r => r.json()).catch(() => null);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const shortHash = (h) => h ? esc(String(h).replace('sha256:', '').slice(0, 14)) : '&mdash;';
+const t = (s) => s ? esc(String(s).slice(11, 19)) : '&mdash;';
+
+function statusPill(s) {
+  const good = ['VERIFIED_LIVE', 'VERIFIED_LOCAL', 'VERIFIED_TESTNET'];
+  const warn = ['ADAPTER_ONLY', 'UNVERIFIED', 'PENDING'];
+  const cls = s === 'SIMULATION' ? 'sim' : good.includes(s) ? 'ok' : warn.includes(s) ? 'mid' : 'bad';
+  return `<span class="pill ${cls}">${esc(s)}</span>`;
+}
+
+async function tick() {
+  const [h, ps, mkt, rep, rej, jr] = await Promise.all([
+    j('/health'), j('/provider-status'), j('/api/marketplace/signals?limit=25'),
+    j('/api/reputation'), j('/api/rejections?limit=12'), j('/api/journal?limit=22')
+  ]);
+  if (!h) return;
+
+  document.getElementById('envline').innerHTML =
+    `<span class="dot ${h.market_data.status === 'VERIFIED_LIVE' ? 'live' : 'off'}"></span>` +
+    `Binance ${esc(h.market_data.status)} &middot; ${h.market_data.latency_ms}ms &middot; env ${esc(h.environment)}`;
+
+  const s = ps && ps.settlement || {};
+  document.getElementById('banner').innerHTML = s.status === 'SIMULATION'
+    ? `<b>SIMULATION settlement.</b> The <code>signature_only</code> verifier performs real
+       EIP-712/EIP-3009 signature recovery and binds each payment to its invoice, but
+       <b>no funds move on any chain</b>. This is not testnet settlement and not live settlement.
+       Set <code>PROM_SETTLEMENT_VERIFIER=onchain</code> with a funded receive address for real settlement.`
+    : `<b>Settlement verifier:</b> ${esc(s.verifier)} ${statusPill(s.status)} &mdash; environment
+       <b>${esc(s.environment)}</b>. ${esc(s.proves || '')}`;
+
+  const c = h.counts;
+  const e = rep && rep.economics || {};
+  document.getElementById('kpis').innerHTML = [
+    ['Signals published', c.signals, `${c.listed} listed now`],
+    ['Drafts rejected', c.rejections, 'unsupported evidence or incoherent'],
+    ['Verified payments', c.paid, `${c.deliveries} artifact(s) delivered`],
+    ['Outcomes resolved', c.outcomes, rep && rep.sample_sufficient
+      ? `accuracy ${esc(rep.directional_accuracy_display)}`
+      : `accuracy: INSUFFICIENT_SAMPLE (n=${rep ? rep.scored_signals : 0})`],
+    ['Gross revenue', `${esc(e.gross_revenue || '0')} ${esc(e.currency || '')}`,
+      `${e.unique_buyers || 0} buyer(s), ${e.repeat_buyers || 0} repeat`],
+    ['Stood down', rep ? rep.stood_down : 0, 'declined rather than sell noise'],
+  ].map(([k, v, sub]) => `<div class="card"><h2>${k}</h2><div class="big">${esc(v)}</div>
+      <div class="sub">${sub}</div></div>`).join('');
+
+  if (ps) {
+    const md = ps.market_data;
+    document.getElementById('providers').innerHTML =
+      `<div class="kv"><span>Binance spot (read-only)</span><span>${statusPill(md.status)}</span></div>` +
+      ps.model_providers.map(p => `<div class="kv"><span>${esc(p.provider)}${p.active ? ' &middot; ACTIVE' : ''}
+        ${p.is_llm ? '' : ' <span class="muted">(rule engine, not an LLM)</span>'}</span>
+        <span>${statusPill(p.status)}</span></div>`).join('') +
+      `<div class="kv"><span>Binance Agent OS MCP</span><span>${statusPill(ps.binance_agent_os.status)}</span></div>` +
+      `<div class="kv"><span>x402 wire protocol v${ps.x402.version}</span><span>${statusPill(ps.x402.status)}</span></div>` +
+      `<div class="sub" style="margin-top:9px">${esc(ps.binance_agent_os.note)}</div>`;
+
+    document.getElementById('settlement').innerHTML = Object.entries({
+      verifier: s.verifier, status: s.status, environment: s.environment,
+      network: ps.x402.network, chain_id: ps.x402.chain_id,
+      asset: ps.x402.asset, pay_to: ps.x402.pay_to,
+    }).map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><span>${k === 'status' ? statusPill(v) : esc(v)}</span></div>`).join('')
+      + `<div class="sub" style="margin-top:9px"><b>Proves:</b> ${esc(s.proves || '&mdash;')}</div>`
+      + (s.does_not_prove ? `<div class="sub"><b>Does not prove:</b> ${esc(s.does_not_prove)}</div>` : '');
+  }
+
+  document.querySelector('#mkt tbody').innerHTML = (mkt && mkt.signals.length)
+    ? mkt.signals.map(x => `<tr>
+        <td class="mono">${esc(x.signal_id.slice(0, 14))}</td><td>${esc(x.asset)}</td>
+        <td>${esc(x.horizon)}</td><td class="mono">${esc(x.price)} ${esc(x.currency)}</td>
+        <td class="mono">${t(x.matures_at)}</td><td><span class="pill mid">${esc(x.state)}</span></td>
+        <td class="mono" style="font-size:10px">${esc(x.pricing_classification || '')}</td>
+        <td class="mono">${shortHash(x.signal_hash)}</td></tr>`).join('')
+    : '<tr><td colspan="8" class="muted">No signals currently listed.</td></tr>';
+
+  const outs = await j('/api/journal?limit=200');
+  const scored = (outs ? outs.entries : []).filter(x => x.event === 'OUTCOME_RECORDED');
+  document.querySelector('#outcomes tbody').innerHTML = scored.length
+    ? scored.slice(0, 14).map(x => {
+        const p = x.payload, r = parseFloat(p.raw_return);
+        const cls = p.directional === 'CORRECT' ? 'ok' : p.directional === 'INCORRECT' ? 'bad' : 'mid';
+        return `<tr><td class="mono">${esc((x.signal_id || '').slice(0, 14))}</td>
+          <td colspan="2" class="muted">&mdash;</td><td class="muted">&mdash;</td>
+          <td class="mono">${esc(p.entry)}</td><td class="mono">${esc(p.exit)}</td>
+          <td class="mono" style="color:${r > 0 ? 'var(--long)' : r < 0 ? 'var(--short)' : 'var(--dim)'}">
+            ${(r * 100).toFixed(4)}%</td>
+          <td><span class="pill ${cls}">${esc(p.directional)}</span></td></tr>`;
+      }).join('')
+    : '<tr><td colspan="8" class="muted">No signal has matured yet. Outcomes appear here once a horizon expires.</td></tr>';
+
+  if (rep) {
+    const rows = [
+      ['scored signals (n)', rep.scored_signals],
+      ['minimum sample required', rep.min_reputation_sample],
+      ['directional accuracy', rep.directional_accuracy_display],
+      ['correct / incorrect / flat', `${rep.correct} / ${rep.incorrect} / ${rep.flat}`],
+      ['mean return', rep.mean_return ?? '—'],
+      ['cumulative return', rep.cumulative_return ?? '—'],
+      ['calibration', rep.calibration.note],
+      ['Brier score', rep.calibration.brier_score ?? 'INSUFFICIENT_SAMPLE'],
+      ['awaiting outcome', rep.awaiting_outcome],
+      ['unresolved', rep.unresolved],
+    ];
+    document.getElementById('rep').innerHTML = rows.map(([k, v]) =>
+      `<div class="kv"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('');
+  }
+
+  document.querySelector('#rej tbody').innerHTML = (rej && rej.rejections.length)
+    ? rej.rejections.map(x => `<tr><td class="mono">${t(x.created_at)}</td><td>${esc(x.asset)}</td>
+        <td><span class="pill bad">${esc(x.reason_code)}</span></td>
+        <td class="muted" style="font-size:11px">${esc((x.detail || '').slice(0, 90))}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="muted">No drafts rejected yet.</td></tr>';
+
+  document.querySelector('#jrnl tbody').innerHTML = (jr && jr.entries.length)
+    ? jr.entries.map(x => `<tr><td class="mono">${x.seq}</td><td class="mono">${t(x.created_at)}</td>
+        <td class="mono">${esc(x.event)}</td>
+        <td class="mono">${esc((x.signal_id || '').slice(0, 14) || '—')}</td>
+        <td class="mono muted" style="font-size:10.5px">${esc(JSON.stringify(x.payload).slice(0, 110))}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="muted">Journal is empty.</td></tr>';
+}
+
+tick();
+setInterval(tick, 5000);
+</script>
+</body>
+</html>
