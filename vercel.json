@@ -1,7 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "env": {
-    "PROM_AUTOPILOT": "0",
-    "PROM_DB_PATH": "/tmp/prometheus.db"
-  }
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "destination": "http://38.49.209.149:8402/:path*"
+    }
+  ]
 }
