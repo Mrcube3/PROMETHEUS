@@ -102,19 +102,16 @@ python verify_security.py --base-url http://127.0.0.1:8402
 
 ---
 
-## Current demo deployment
+## Deployment notes
 
-The working public demo runs on the Prometheus VPS service, separately from Apex:
+Prometheus can run independently as a PM2 process or container on the configured
+host and port. Keep the deployment hostname, IP address and administrative URLs out
+of public documentation and source control.
 
-- Dashboard: <http://38.49.209.149:8402>
-- Health: <http://38.49.209.149:8402/health>
-- OpenAPI: <http://38.49.209.149:8402/docs>
-- Apex remains on <http://38.49.209.149:4174>
-
-Prometheus runs as the `prometheus-agent` PM2 process on port `8402`; Apex is not
-restarted or modified by the Prometheus deployment. The current public endpoint is
-HTTP-only and intended for demonstrations. Settlement is explicitly labelled
-`SIMULATION` until a real on-chain or facilitator verifier is configured.
+The default signature-only deployment is intended for demonstrations and is
+explicitly labelled `SIMULATION` until a real on-chain or facilitator verifier is
+configured. Use HTTPS and protect administrative routes before exposing a live
+instance.
 
 Vercel is not the primary runtime for this application. Its serverless functions can
 serve a request, but they do not provide the persistent SQLite process and continuous
