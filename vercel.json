@@ -1,10 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
+  "redirects": [
     {
       "source": "/",
-      "destination": "http://38.49.209.149:8402/"
-    },
+      "destination": "http://38.49.209.149:8402/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
     {
       "source": "/(.*)",
       "destination": "http://38.49.209.149:8402/$1"
