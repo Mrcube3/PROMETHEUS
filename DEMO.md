@@ -37,8 +37,9 @@ Point at:
 - `market_data.status` = `VERIFIED_LIVE`, with the actual host and latency
 - `market_data.not_implemented` listing account data, orders and **withdrawals** —
   no API key is held, so those capabilities do not exist in this build
-- `binance_agent_os.status` = `UNAVAILABLE` — *"no Agent OS MCP server is mounted in
-  this runtime; no tool signatures are claimed"*
+- `binance_agent_os.status` = `VERIFIED_LIVE` — official `binance-cli 2.1.1`,
+  `api_env: prod`, `authenticated: false`. It corroborates every snapshot against
+  Binance mainnet over a second, independent transport
 - inactive model adapters marked `ADAPTER_ONLY`, not "integrated"
 
 > The honesty here is the feature. Most hackathon entries would call these "integrated".
@@ -104,7 +105,7 @@ the artifact it received is the artifact that was frozen before it paid."*
 python verify_security.py --base-url http://127.0.0.1:8402
 ```
 
-30 live attacks against the running server. Highlights:
+35 live attacks against the running server. Highlights:
 
 - `{"paid": true}` as an `X-PAYMENT` header — rejected; it does not decode into a
   payment payload at all
@@ -116,7 +117,7 @@ python verify_security.py --base-url http://127.0.0.1:8402
 - redelivery — byte-identical artifact
 - full passport before maturity — 402
 
-Expected: `RESULT: 30/30 checks passed`.
+Expected: `RESULT: 33/33 checks passed`.
 
 ---
 
@@ -160,16 +161,30 @@ is a separate, immutable row.
 curl -s http://127.0.0.1:8402/api/reputation | python -m json.tool
 ```
 
-**The most important thing on screen:**
+**The most important thing on screen** is whichever of these two the record has earned:
 
 ```json
 "directional_accuracy_display": "INSUFFICIENT_SAMPLE",
-"n": 3,
-"min_reputation_sample": 20
+"n": 3, "min_reputation_sample": 20
 ```
 
-Three correct predictions out of three is a 100% record. PROMETHEUS refuses to display
-it. Sample size travels with every figure.
+Three correct calls out of three is a 100% record. PROMETHEUS refuses to display it.
+
+Once the sample is large enough, a second guard takes over:
+
+```json
+"directional_accuracy_display": "67.65% (qualified)",
+"sample_trustworthy": false,
+"direction_concentration": "1.0000",
+"sample_caveats": [{"code": "SINGLE_DIRECTION_SAMPLE",
+  "detail": "35 of 35 scored signals were SHORT. An accuracy figure drawn almost
+             entirely from one direction measures the market's trend over this
+             window, not the agent's judgement."}]
+```
+
+That is a real figure this build produced. Size alone was never enough: an accuracy
+earned entirely from SHORT calls during a downtrend measures the market, not the
+agent. The number is shown, never bare.
 
 And the pricing consequence:
 

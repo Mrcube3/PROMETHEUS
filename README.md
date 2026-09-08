@@ -58,8 +58,8 @@ Real output from this build, against live Binance:
 Test results:
 
 ```
-python -m pytest tests/ -q     ->  86 passed
-python verify_security.py      ->  33/33 checks passed
+python -m pytest tests/ -q     ->  95 passed
+python verify_security.py      ->  35/35 checks passed
 ```
 
 ---
@@ -150,10 +150,25 @@ Below 20 resolved signals the price is exactly `BASE_PRICE`, classified
 produce the identical price, because with no track record, confidence is just an
 assertion. Tested.
 
-### Reputation refuses to flatter itself
+### Reputation refuses to flatter itself — twice over
 
 Three correct predictions out of three is a 100% record. PROMETHEUS displays
-`INSUFFICIENT_SAMPLE`. Sample size `n` accompanies every figure, everywhere. Tested.
+`INSUFFICIENT_SAMPLE`. Sample size `n` accompanies every figure, everywhere.
+
+Size alone is not enough, and this build proved it. At 27 resolved signals — above
+the threshold — it was reporting 88% accuracy. Every one of those calls was `SHORT`,
+during a single BTC downtrend. That figure measured the market, not the agent.
+
+So composition is now checked too. A headline stands bare only when the sample can
+support it; otherwise it is qualified and the reason is named:
+
+| Caveat | Trigger |
+|---|---|
+| `SINGLE_DIRECTION_SAMPLE` | ≥80% of scored calls share one direction |
+| `SINGLE_ASSET_SAMPLE` | every scored call on one asset |
+| `INSUFFICIENT_SAMPLE` | below the configured minimum |
+
+The raw number is never hidden, only qualified. Tested.
 
 ### STAND_DOWN is a product outcome
 

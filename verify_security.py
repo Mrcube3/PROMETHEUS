@@ -182,10 +182,18 @@ def main() -> int:
           f"ledger={len(treasury['entries'])} paid={paid}")
 
     rep = http.get(f"{base}/api/reputation").json()
-    if rep["scored_signals"] < rep["min_reputation_sample"]:
-        check("accuracy is withheld below minimum sample",
-              rep["directional_accuracy_display"] == "INSUFFICIENT_SAMPLE",
-              f"shows: {rep['directional_accuracy_display']}")
+    # A headline accuracy may stand bare ONLY when the sample can support it:
+    # large enough, and not concentrated in one direction or one asset.
+    disp = rep["directional_accuracy_display"]
+    bare = disp.endswith("%") and "qualified" not in disp
+    check("accuracy stands bare only when the sample supports it",
+          rep["sample_trustworthy"] or not bare,
+          f"trustworthy={rep['sample_trustworthy']} shows={disp!r}")
+    check("every caveat is named, not just implied",
+          rep["sample_trustworthy"] or bool(rep["sample_caveats"]),
+          f"caveats={[c['code'] for c in rep['sample_caveats']]}")
+    check("raw accuracy is never hidden, only qualified",
+          rep["n"] == 0 or rep["directional_accuracy"] is not None)
     check("sample size n is always reported", "n" in rep, f"n={rep.get('n')}")
 
     ps = http.get(f"{base}/provider-status").json()
