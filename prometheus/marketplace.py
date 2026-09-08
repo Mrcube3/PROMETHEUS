@@ -6,8 +6,8 @@ Security posture, stated plainly:
     refuses unless the purchase row in the database says PAID and VERIFIED. Those
     columns are written only by ``submit_payment`` after a verifier returned
     ``verified=True``.
-  * A client-supplied claim of payment is inert. The only client input that matters
-    is the X-PAYMENT header, and its contents are checked cryptographically against
+   * A client-supplied claim of payment is inert. The only client input that matters
+     is the PAYMENT-SIGNATURE header, and its contents are checked cryptographically against
     the invoice this server issued.
   * Every mutating operation is idempotent, keyed so that a network retry replays
     the first answer instead of charging, delivering or scoring twice.
@@ -28,7 +28,6 @@ from .config import Config
 from .db import Database
 from .payments.verifier import SettlementVerifier
 from .payments.x402 import (
-    ASSET_TRANSFER_METHOD_EIP3009,
     MalformedPayment,
     PaymentPayload,
     PaymentRequirements,
@@ -105,7 +104,7 @@ class Marketplace:
             outputSchema=None,
             maxTimeoutSeconds=self.cfg.x402_timeout_seconds,
             extra={
-                "assetTransferMethod": ASSET_TRANSFER_METHOD_EIP3009,
+                "assetTransferMethod": self.cfg.x402_asset_transfer_method,
                 "name": self.cfg.x402_asset_name,
                 "version": self.cfg.x402_asset_version,
                 # Non-normative context so a buyer knows what it is being asked to
@@ -153,7 +152,16 @@ class Marketplace:
                 purchase_id, signal_id, now_iso(), now_iso(), PaymentState.PAYMENT_REQUIRED.value,
                 row["price"], row["currency"], requirements.maxAmountRequired,
                 requirements.network, requirements.scheme, requirements.asset, requirements.payTo,
-                self.cfg.environment, json.dumps(requirements.to_dict(), sort_keys=True),
+                self.cfg.environment,
+                # `resource` is top-level in x402 v2 and is retained here so a
+                # later retry can reconstruct the exact challenge from the DB.
+                json.dumps(
+                    {
+                        **requirements.to_dict(version=self.cfg.x402_version),
+                        "resource": requirements.resource,
+                    },
+                    sort_keys=True,
+                ),
                 iso(expires), "UNVERIFIED",
             ),
         )
@@ -167,6 +175,7 @@ class Marketplace:
         body = payment_required_body(
             [requirements],
             error=f"Payment required for PROMETHEUS signal {signal_id}",
+            version=self.cfg.x402_version,
         )
         response = {
             "purchase_id": purchase_id,
@@ -183,7 +192,7 @@ class Marketplace:
     def submit_payment(
         self, purchase_id: str, header_value: str, *, tx_hash: str | None = None
     ) -> dict[str, Any]:
-        """Verify an X-PAYMENT header against this purchase's invoice.
+        """Verify a PAYMENT-SIGNATURE header against this purchase's invoice.
 
         Idempotent on the purchase: once PAID, resubmission replays the stored
         result rather than re-verifying or re-charging.
@@ -242,7 +251,7 @@ class Marketplace:
         assert_payment_transition(state, PaymentState.PAYMENT_SUBMITTED)
         try:
             self._set_state(purchase_id, state, PaymentState.PAYMENT_SUBMITTED,
-                            reason="X-PAYMENT received", payer=payload.authorization.from_,
+                            reason="PAYMENT-SIGNATURE received", payer=payload.authorization.from_,
                             nonce=payload.authorization.nonce,
                             payment_json=json.dumps(payload.to_dict(), sort_keys=True))
         except sqlite3.IntegrityError as exc:

@@ -35,19 +35,20 @@ entry price, the hashes would not match.
 
 ---
 
-## Verified end-to-end run
+## Production end-to-end run target
 
-Real output from this build, against live Binance:
+With a connected Binance Agentic Wallet and a configured live settlement verifier,
+the same public flow produces output of this shape:
 
 ```
 1. DISCOVER      2 signal(s) listed. Selected sig_819c739370d0be98565ec8ae
-                 price 0.250000 USDC
+                 price 0.250000 USDT
                  protected fields visible pre-payment: NONE
-2. HTTP 402      scheme exact, network bsc-testnet
+2. HTTP 402      scheme exact, network eip155:56
                  250000000000000000 atomic units
 3. PAYWALL       HTTP 402 confirmed on the protected resource
-4. SIGN          EIP-3009 TransferWithAuthorization, chainId 97
-5. DELIVERED     settlement verifier: signature_only  env: SIMULATION
+4. SIGN          Binance Agentic Wallet x402 payment, chainId 56
+5. DELIVERED     settlement verifier: facilitator/onchain  env: LIVE
 6. VERIFY        claimed    : sha256:95da7c52ee3e237d6ff6584fefe9d9a077202e837b65166cb15e8ed976ad1485
                  recomputed : sha256:95da7c52ee3e237d6ff6584fefe9d9a077202e837b65166cb15e8ed976ad1485
                  MATCH      : True
@@ -66,7 +67,9 @@ python verify_security.py      ->  35/35 checks passed
 
 ## Quick start
 
-No API keys, no wallet, no secrets required.
+The seller can start without credentials. A real buyer payment requires the
+Binance Agentic Wallet CLI (`baw`) and a connected, funded wallet. The local
+signature-only flow is available only when explicitly requested for tests.
 
 ```bash
 pip install fastapi uvicorn pydantic httpx eth-account pytest
@@ -82,7 +85,13 @@ OpenAPI. The autopilot begins generating signals immediately.
 Then, in a second terminal, buy one as an independent machine:
 
 ```bash
-python buyer_agent.py --base-url http://127.0.0.1:8402
+python buyer_agent.py --base-url http://127.0.0.1:8402 --payment-mode baw
+```
+
+For a hermetic, non-settling test only:
+
+```bash
+python buyer_agent.py --base-url http://127.0.0.1:8402 --payment-mode simulation
 ```
 
 And attack the running server:
@@ -110,7 +119,7 @@ REPRICE ←─ REPUTATION ←─ SCORE ←─ RESOLVE ←─ DELIVER ←─ VERI
 | VALIDATE | Evidence validator. Fabricated citation ⇒ signal destroyed |
 | FREEZE | SHA-256 over canonical JSON |
 | PRICE | Bounded deterministic formula. The model cannot influence it |
-| PAY | x402 v1 |
+| PAY | x402 v2 |
 | VERIFY | Server-side settlement verifier |
 | DELIVER | Only on `PAID` + `VERIFIED`, read from the database |
 | RESOLVE | Binance, via a rule fixed before publication |
@@ -189,24 +198,24 @@ records. Tested by attempting the forbidden writes.
 
 This is the part most likely to be overstated in a hackathon, so it is stated flatly.
 
-The **x402 v1 wire protocol is implemented verbatim** from the official specification
-files captured in `.discovery/` — the 402 body, the `X-PAYMENT` header, the
-`X-PAYMENT-RESPONSE` header, the `exact` scheme's EIP-3009 payload. None of it is
-invented.
+The **x402 v2 wire protocol is implemented** from the current official specification
+and Binance Agentic Wallet reference — the `PAYMENT-REQUIRED` challenge,
+`PAYMENT-SIGNATURE` request header, `PAYMENT-RESPONSE` settlement header, CAIP-2
+network identifiers, and the `exact` scheme's EIP-3009 and Permit2 payloads.
 
 **Signature verification is real cryptography.** The server reconstructs the EIP-712
-`TransferWithAuthorization` typed data, recovers the signer with secp256k1, and checks
-that the signed authorization binds the exact amount, asset, recipient and validity
-window on the invoice **it** issued. Tampering with the amount after signing breaks
-recovery, and the server rejects it. Tested.
+`TransferWithAuthorization` or Permit2 `PermitWitnessTransferFrom` typed data, recovers
+the signer with secp256k1, and checks that the signed authorization binds the exact
+amount, asset, recipient and validity window on the invoice **it** issued. Tampering
+with the amount after signing breaks recovery, and the server rejects it. Tested.
 
 Three settlement verifiers exist, and every purchase records which one ruled:
 
 | Verifier | Proves | Status |
 |---|---|---|
-| `signature_only` (default) | a specific key authorised this exact payment | **`SIMULATION`** |
+| `signature_only` | a specific key authorised this exact payment | **`SIMULATION`** |
 | `onchain` | a confirmed ERC-20 `Transfer` to `payTo` on BSC | `VERIFIED_TESTNET` / `VERIFIED_LIVE` |
-| `facilitator` | whatever a configured facilitator attests | `ADAPTER_ONLY` |
+| `facilitator` | whatever a configured facilitator attests | `VERIFIED_LIVE` only after real settlement |
 
 **The default verifier is a SIMULATION and says so** — in the database, the API, the
 delivered artifact, the dashboard banner and the buyer agent's output. It proves
@@ -219,6 +228,16 @@ For real settlement, configure the on-chain verifier:
 export PROM_SETTLEMENT_VERIFIER=onchain
 export PROM_X402_PAY_TO=0xYourReceiveAddress
 python -m uvicorn prometheus.api.app:app
+```
+
+For the same-day BSC USDT x402 path, use the public Dexter facilitator and Permit2.
+This is a third-party x402 facilitator, not Binance's onboarded merchant API:
+
+```bash
+export PROM_SETTLEMENT_VERIFIER=facilitator
+export PROM_X402_FACILITATOR_URL=https://x402.dexter.cash
+export PROM_X402_ASSET_TRANSFER_METHOD=permit2
+export PROM_X402_PAY_TO=0xYourBrotherReceiveAddress
 ```
 
 The server **refuses to start** in on-chain mode without a real receive address —
@@ -241,9 +260,10 @@ A transaction hash is **never synthesised**. Under `signature_only` the field is
 |---|---|---|
 | Binance Agent OS MCP | `UNAVAILABLE` | No server mounted, no credential in this runtime. **No tool signatures were invented.** |
 | Binance account / orders / withdrawals | `UNAVAILABLE` | No API key held. Not implemented, not claimed. |
-| On-chain x402 settlement | `VERIFIED_LIVE` capable, **not exercised** | No funded wallet. Read path proven (`eth_chainId` → `0x61`). |
-| Binance x402 facilitator | `UNVERIFIED` | No public base URL confirmed from primary docs. Adapter shipped, off by default. |
-| EIP-3009 gasless settlement | `UNVERIFIED` | The verified BSC-testnet USDT contract does **not** implement EIP-3009 — confirmed by reading the contract. |
+| On-chain x402 settlement | `VERIFIED_LIVE` capable, **not exercised** | Requires a real merchant address and confirmed settlement transaction. |
+| Binance hosted B402 merchant API | `UNAVAILABLE` without partner onboarding | Binance documents credentials, RSA signing, IP allowlisting and a provisioned base URL. |
+| Dexter x402 facilitator on BSC | `REACHABLE` | Public `/supported` advertises BSC exact Permit2 and sponsored-approval extensions; a real settlement is still required for `VERIFIED_LIVE`. |
+| Binance Agentic Wallet buyer | `ADAPTER_ONLY` until connected and funded | Uses documented `baw x402-payment preview/sign`; the buyer refuses to sign when the seller is still in simulation mode. |
 | Anthropic / Ollama providers | `ADAPTER_ONLY` | No key, no reachable endpoint. Adapters shipped, inactive. |
 
 The default model provider is a **deterministic rule engine**, `heuristic /
@@ -316,8 +336,10 @@ PROM_HORIZONS=10M,15M            # also supports 30M, 1H, 4H, 24H
 PROM_MODEL_PROVIDER=heuristic    # or anthropic, ollama
 PROM_BASE_PRICE=0.25
 PROM_MIN_REPUTATION_SAMPLE=20
-PROM_SETTLEMENT_VERIFIER=signature_only   # or onchain, facilitator
-PROM_X402_PAY_TO=0x...           # required for onchain
+PROM_SETTLEMENT_VERIFIER=facilitator      # or onchain, signature_only for tests
+PROM_X402_FACILITATOR_URL=https://x402.dexter.cash
+PROM_X402_ASSET_TRANSFER_METHOD=permit2   # BSC USDT uses Permit2
+PROM_X402_PAY_TO=0x...                    # brother's receive-only wallet
 ```
 
 Short horizons exist so a full lifecycle can be observed in minutes. They are a real
@@ -338,7 +360,7 @@ prometheus/
   quant/features.py   deterministic features + derivations
   model/              provider interface, heuristic, anthropic, ollama
   signals/            schema, evidence validator, engine, passport
-  payments/           x402 v1 types, settlement verifiers
+  payments/           x402 v2 types, settlement verifiers
   pricing.py          bounded deterministic pricing
   marketplace.py      purchase lifecycle, delivery gate
   outcome.py          resolution against Binance
@@ -347,7 +369,7 @@ prometheus/
   api/app.py          FastAPI + OpenAPI
 buyer_agent.py        independent buyer, independent hash verification
 verify_security.py    live attacks against a running server
-tests/                67 tests
+tests/                95 tests
 DISCOVERY.md          evidence and capability matrix
 ```
 

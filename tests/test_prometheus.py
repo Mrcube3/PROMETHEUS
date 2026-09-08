@@ -23,10 +23,14 @@ from prometheus.config import Config, ConfigError, VERIFIER_ONCHAIN
 from prometheus.db import Database
 from prometheus.payments.x402 import (
     MalformedPayment,
+    PaymentRequirements,
     PaymentState,
     assert_payment_transition,
+    decode_payment_required,
     decode_payment_header,
+    encode_payment_required,
     IllegalPaymentTransition,
+    payment_required_body,
 )
 from prometheus.provenance import Classification, Freshness, classify_freshness, unavailable_field
 from prometheus.quant.features import QuantPacket
@@ -264,6 +268,56 @@ class TestX402Decoding:
         assert p.authorization.value == "1000"
         assert p.scheme == "exact"
 
+    def test_permit2_payload_decodes_and_round_trips(self):
+        body = {
+            "x402Version": 2,
+            "resource": {"url": "http://x/y"},
+            "accepted": {
+                "scheme": "exact", "network": "eip155:56", "amount": "1000",
+                "asset": "0x" + "aa" * 20, "payTo": "0x" + "bb" * 20,
+                "maxTimeoutSeconds": 300,
+                "extra": {"assetTransferMethod": "permit2"},
+            },
+            "payload": {
+                "signature": "0x" + "ab" * 65,
+                "permit2Authorization": {
+                    "permitted": {"token": "0x" + "aa" * 20, "amount": "1000"},
+                    "from": "0x" + "11" * 20,
+                    "spender": "0x402085c248EeA27D92E8b30b2C58ed07f9E20001",
+                    "nonce": "123456789",
+                    "deadline": "99999999999",
+                    "witness": {"to": "0x" + "bb" * 20, "validAfter": "1"},
+                },
+            },
+        }
+        p = decode_payment_header(_b64(body))
+        assert p.permit2_authorization is not None
+        assert p.authorization.value == "1000"
+        assert p.to_dict()["payload"]["permit2Authorization"]["nonce"] == "123456789"
+
+    def test_v2_payment_required_and_payload_shape(self):
+        req = PaymentRequirements(
+            scheme="exact", network="eip155:56", maxAmountRequired="250000000000000000",
+            asset="0x" + "aa" * 20, payTo="0x" + "bb" * 20,
+            resource="http://seller/api/purchases/pur_1/delivery",
+            description="signal", extra={"name": "Tether USD", "version": "1"},
+        )
+        body = payment_required_body([req])
+        assert body["x402Version"] == 2
+        assert body["resource"]["url"].endswith("/delivery")
+        assert body["accepts"][0]["amount"] == "250000000000000000"
+        assert "maxAmountRequired" not in body["accepts"][0]
+        assert decode_payment_required(encode_payment_required(body)) == body
+
+    def test_v2_requires_accepted_requirement(self):
+        bad = {
+            "x402Version": 2,
+            "resource": {"url": "http://seller/api/purchases/pur_1/delivery"},
+            "payload": VALID_PAYLOAD["payload"],
+        }
+        with pytest.raises(MalformedPayment):
+            decode_payment_header(_b64(bad))
+
     def test_empty_header_rejected(self):
         with pytest.raises(MalformedPayment):
             decode_payment_header("")
@@ -365,6 +419,69 @@ class TestSignatureVerification:
             payload, chain_id=97, token_name="Tether USD", token_version="1",
             verifying_contract=self.REQ["asset"],
         )
+        assert recovered.lower() == acct.address.lower()
+
+    def test_genuine_permit2_signature_recovers_to_signer(self):
+        from eth_account import Account
+        from eth_account.messages import encode_typed_data
+
+        from prometheus.payments.verifier import recover_signer
+
+        acct = Account.from_key("0x" + secrets.token_hex(32))
+        now = 1_800_000_000
+        req = {
+            "scheme": "exact", "network": "eip155:56", "amount": "1000",
+            "asset": "0x" + "aa" * 20, "payTo": "0x" + "33" * 20,
+            "resource": "http://x/y", "description": "d", "maxTimeoutSeconds": 300,
+            "extra": {"assetTransferMethod": "permit2"},
+        }
+        permit = {
+            "permitted": {"token": req["asset"], "amount": req["amount"]},
+            "from": acct.address,
+            "spender": "0x402085c248EeA27D92E8b30b2C58ed07f9E20001",
+            "nonce": "123456789012345678901234567890",
+            "deadline": str(now + 600),
+            "witness": {"to": req["payTo"], "validAfter": str(now - 60)},
+        }
+        typed = {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                    {"name": "verifyingContract", "type": "address"},
+                ],
+                "PermitWitnessTransferFrom": [
+                    {"name": "permitted", "type": "TokenPermissions"},
+                    {"name": "spender", "type": "address"},
+                    {"name": "nonce", "type": "uint256"},
+                    {"name": "deadline", "type": "uint256"},
+                    {"name": "witness", "type": "Witness"},
+                ],
+                "TokenPermissions": [
+                    {"name": "token", "type": "address"}, {"name": "amount", "type": "uint256"}
+                ],
+                "Witness": [
+                    {"name": "to", "type": "address"}, {"name": "validAfter", "type": "uint256"}
+                ],
+            },
+            "primaryType": "PermitWitnessTransferFrom",
+            "domain": {"name": "Permit2", "chainId": 56,
+                       "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"},
+            "message": {
+                "permitted": {"token": permit["permitted"]["token"], "amount": 1000},
+                "spender": permit["spender"], "nonce": int(permit["nonce"]),
+                "deadline": int(permit["deadline"]),
+                "witness": {"to": permit["witness"]["to"], "validAfter": now - 60},
+            },
+        }
+        signature = acct.sign_message(encode_typed_data(full_message=typed)).signature.hex()
+        if not signature.startswith("0x"):
+            signature = "0x" + signature
+        body = {"x402Version": 2, "resource": {"url": "http://x/y"},
+                "accepted": req, "payload": {"signature": signature, "permit2Authorization": permit}}
+        payload = decode_payment_header(_b64(body))
+        recovered = recover_signer(payload, chain_id=56, token_name="Tether USD",
+                                   token_version="1", verifying_contract=req["asset"])
         assert recovered.lower() == acct.address.lower()
 
     def test_tampered_amount_breaks_recovery(self):

@@ -90,21 +90,25 @@ def main() -> int:
     def b64(o: Any) -> str:
         return base64.b64encode(json.dumps(o).encode()).decode()
 
-    # Per the x402 v1 error table a malformed payload is HTTP 400 and a failed
+    # Per the x402 v2 error table a malformed payload is HTTP 400 and a failed
     # verification is HTTP 402. Either way the artifact must not be released, so the
     # security property under test is simply: never 200.
     for label, header in [
         ('{"paid": true}', b64({"paid": True})),
-        ("valid shape but paid flag", b64({"x402Version": 1, "scheme": "exact",
-                                          "network": req["network"], "paid": True})),
+        ("valid shape but paid flag", b64({"x402Version": 2,
+                                          "resource": purchase["x402"].get("resource", {}),
+                                          "accepted": req, "paid": True})),
         ("empty header", ""),
         ("garbage", "not-base64-at-all!!"),
-        ("null signature", b64({"x402Version": 1, "scheme": "exact", "network": req["network"],
+        ("null signature", b64({"x402Version": 2,
+                                "resource": purchase["x402"].get("resource", {}),
+                                "accepted": req,
                                 "payload": {"signature": None, "authorization": {}}})),
-        ("wrong x402 version", b64({**json.loads(json.dumps({"x402Version": 99, "scheme": "exact",
-                                                             "network": req["network"]}))})),
+        ("wrong x402 version", b64({**json.loads(json.dumps({"x402Version": 99,
+                                                             "resource": purchase["x402"].get("resource", {}),
+                                                             "accepted": req}))})),
     ]:
-        r = http.get(delivery_url, headers={"X-PAYMENT": header} if header else {})
+        r = http.get(delivery_url, headers={"PAYMENT-SIGNATURE": header} if header else {})
         check(f"forged payment does not deliver: {label}",
               r.status_code in (400, 402), f"got HTTP {r.status_code}")
 
@@ -116,19 +120,19 @@ def main() -> int:
 
     tampered = json.loads(json.dumps(decoded))
     tampered["payload"]["authorization"]["value"] = "1"
-    r = http.get(delivery_url, headers={"X-PAYMENT": b64(tampered)})
+    r = http.get(delivery_url, headers={"PAYMENT-SIGNATURE": b64(tampered)})
     check("amount tampered after signing is rejected", r.status_code in (400, 402),
           f"got HTTP {r.status_code}")
 
     tampered2 = json.loads(json.dumps(decoded))
     tampered2["payload"]["authorization"]["to"] = "0x" + "99" * 20
-    r = http.get(delivery_url, headers={"X-PAYMENT": b64(tampered2)})
+    r = http.get(delivery_url, headers={"PAYMENT-SIGNATURE": b64(tampered2)})
     check("recipient tampered after signing is rejected", r.status_code in (400, 402),
           f"got HTTP {r.status_code}")
 
     # ------------------------------------------------------------ genuine payment
     print("\n[4] GENUINE PAYMENT AND DELIVERY")
-    r = http.get(delivery_url, headers={"X-PAYMENT": good_header})
+    r = http.get(delivery_url, headers={"PAYMENT-SIGNATURE": good_header})
     check("genuine signed payment is accepted", r.status_code == 200, f"got HTTP {r.status_code}")
     if r.status_code != 200:
         print(json.dumps(r.json(), indent=2)[:600])
@@ -153,7 +157,7 @@ def main() -> int:
 
     # ---------------------------------------------------------------- idempotency
     print("\n[5] IDEMPOTENCY AND REPLAY")
-    r2 = http.get(delivery_url, headers={"X-PAYMENT": good_header})
+    r2 = http.get(delivery_url, headers={"PAYMENT-SIGNATURE": good_header})
     check("redelivery returns 200 and identical bytes", r2.status_code == 200)
     check("redelivered artifact is byte-identical",
           r2.json()["hashes"]["signal_hash"] == artifact["hashes"]["signal_hash"])
@@ -169,7 +173,7 @@ def main() -> int:
     # Replay the same signed authorization against a brand new purchase.
     fresh = http.post(f"{base}/api/marketplace/signals/{sid}/purchase").json()
     fresh_url = f"{base}/api/purchases/{fresh['purchase_id']}/delivery"
-    r = http.get(fresh_url, headers={"X-PAYMENT": good_header})
+    r = http.get(fresh_url, headers={"PAYMENT-SIGNATURE": good_header})
     check("replaying a used authorization nonce is refused", r.status_code in (400, 402, 409),
           f"got HTTP {r.status_code}")
 

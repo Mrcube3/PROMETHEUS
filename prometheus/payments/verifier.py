@@ -37,12 +37,36 @@ from ..config import (
     Config,
 )
 from ..provenance import Status, now_iso
-from .x402 import PaymentPayload, PaymentRequirements
+from .x402 import (
+    ASSET_TRANSFER_METHOD_PERMIT2,
+    PERMIT2_ADDRESS,
+    X402_EXACT_PERMIT2_PROXY_ADDRESS,
+    PaymentPayload,
+    PaymentRequirements,
+)
 
 # keccak256("Transfer(address,address,uint256)")
 ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 VERIFIER_VERSION = "settlement-verifier-1.0.0"
+
+
+def _chain_id_for(requirements: PaymentRequirements, configured: int) -> int:
+    """Resolve the EIP-712 chain from the invoice when it is explicit.
+
+    Persisted v1 invoices used the label ``bsc-testnet``; keep that legacy
+    mapping while v2 uses the authoritative CAIP-2 ``eip155:<id>`` label.
+    """
+    if requirements.network == "bsc-testnet":
+        return 97
+    if requirements.network == "bsc":
+        return 56
+    if requirements.network.startswith("eip155:"):
+        try:
+            return int(requirements.network.split(":", 1)[1])
+        except ValueError:
+            pass
+    return configured
 
 
 @dataclass
@@ -84,6 +108,46 @@ def _eip712_typed_data(
     Struct and domain are the EIP-3009 / EIP-712 standard forms, which is what the
     x402 `exact` EVM scheme signs.
     """
+    if payload.permit2_authorization is not None:
+        p = payload.permit2_authorization
+        return {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                    {"name": "verifyingContract", "type": "address"},
+                ],
+                "PermitWitnessTransferFrom": [
+                    {"name": "permitted", "type": "TokenPermissions"},
+                    {"name": "spender", "type": "address"},
+                    {"name": "nonce", "type": "uint256"},
+                    {"name": "deadline", "type": "uint256"},
+                    {"name": "witness", "type": "Witness"},
+                ],
+                "TokenPermissions": [
+                    {"name": "token", "type": "address"},
+                    {"name": "amount", "type": "uint256"},
+                ],
+                "Witness": [
+                    {"name": "to", "type": "address"},
+                    {"name": "validAfter", "type": "uint256"},
+                ],
+            },
+            "primaryType": "PermitWitnessTransferFrom",
+            "domain": {
+                "name": "Permit2",
+                "chainId": chain_id,
+                "verifyingContract": PERMIT2_ADDRESS,
+            },
+            "message": {
+                "permitted": {"token": p.token, "amount": int(p.amount)},
+                "spender": p.spender,
+                "nonce": int(p.nonce),
+                "deadline": int(p.deadline),
+                "witness": {"to": p.witness_to, "validAfter": int(p.witness_valid_after)},
+            },
+        }
+
     a = payload.authorization
     return {
         "types": {
@@ -157,6 +221,37 @@ def _check_authorization_terms(
     if payload.scheme != requirements.scheme:
         return f"payload scheme {payload.scheme!r} does not match invoice scheme {requirements.scheme!r}"
 
+    transfer_method = requirements.extra.get("assetTransferMethod", "eip3009")
+    if transfer_method == ASSET_TRANSFER_METHOD_PERMIT2:
+        p = payload.permit2_authorization
+        if p is None:
+            return "invoice requires Permit2 but payload contains an EIP-3009 authorization"
+        if p.token.lower() != requirements.asset.lower():
+            return f"permit2 token {p.token} does not match invoice asset {requirements.asset}"
+        if p.spender.lower() != X402_EXACT_PERMIT2_PROXY_ADDRESS.lower():
+            return (
+                f"permit2 spender {p.spender} is not the canonical x402 exact Permit2 proxy "
+                f"{X402_EXACT_PERMIT2_PROXY_ADDRESS}"
+            )
+    elif payload.permit2_authorization is not None:
+        return "invoice requires EIP-3009 but payload contains a Permit2 authorization"
+
+    # x402 v2 binds the signed payload to the complete accepted requirement.
+    # Without these checks a valid signature for another merchant, asset or
+    # amount could be replayed against this resource.
+    if payload.accepted is not None:
+        accepted = payload.accepted
+        if accepted.network != requirements.network:
+            return "accepted payment network does not match this invoice"
+        if accepted.amount != requirements.amount:
+            return "accepted payment amount does not match this invoice"
+        if accepted.asset.lower() != requirements.asset.lower():
+            return "accepted payment asset does not match this invoice"
+        if accepted.payTo.lower() != requirements.payTo.lower():
+            return "accepted payment recipient does not match this invoice"
+        if accepted.extra.get("assetTransferMethod", "eip3009") != transfer_method:
+            return "accepted payment transfer method does not match this invoice"
+
     valid_after, valid_before = int(a.validAfter), int(a.validBefore)
     if now < valid_after:
         return f"authorization is not yet valid (validAfter {valid_after}, now {now})"
@@ -181,6 +276,9 @@ class SettlementVerifier:
                 "verifier": kind,
                 "status": Status.SIMULATION.value,
                 "environment": "SIMULATION",
+                "chain_id": self.cfg.x402_chain_id,
+                "network": self.cfg.x402_network,
+                "asset": self.cfg.x402_asset,
                 "proves": (
                     "a specific private key cryptographically authorised this exact amount, "
                     "asset, receiver and validity window"
@@ -242,7 +340,7 @@ class SettlementVerifier:
         try:
             recovered = recover_signer(
                 payload,
-                chain_id=self.cfg.x402_chain_id,
+                chain_id=_chain_id_for(requirements, self.cfg.x402_chain_id),
                 token_name=requirements.extra.get("name", self.cfg.x402_asset_name),
                 token_version=requirements.extra.get("version", self.cfg.x402_asset_version),
                 verifying_contract=requirements.asset,
@@ -267,7 +365,7 @@ class SettlementVerifier:
             verified=True, verifier=VERIFIER_SIGNATURE_ONLY, status=Status.SIMULATION,
             environment="SIMULATION",
             reason=(
-                "EIP-3009 authorization signature verified and bound to the invoice terms. "
+        "payment authorization signature verified and bound to the invoice terms. "
                 "SIMULATION: no funds moved on any chain."
             ),
             payer=recovered,
@@ -275,7 +373,7 @@ class SettlementVerifier:
             settlement_status="AUTHORIZED_NOT_SETTLED",
             evidence={
                 "recovered_signer": recovered,
-                "chain_id": self.cfg.x402_chain_id,
+                "chain_id": _chain_id_for(requirements, self.cfg.x402_chain_id),
                 "verifying_contract": requirements.asset,
                 "eip712_domain": {
                     "name": requirements.extra.get("name", self.cfg.x402_asset_name),

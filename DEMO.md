@@ -74,7 +74,7 @@ python buyer_agent.py --base-url http://127.0.0.1:8402
 Walk through the seven printed stages:
 
 1. **DISCOVER** — reads the open marketplace. `protected fields visible pre-payment: NONE`
-2. **HTTP 402 PAYMENT REQUIRED** — real x402 v1: `scheme exact`, `network bsc-testnet`,
+2. **HTTP 402 PAYMENT REQUIRED** — x402 v2: `scheme exact`, `network eip155:56`,
    amount in atomic units, `payTo`, and the token's EIP-712 domain
 3. **PAYWALL CHECK** — requests the protected resource unpaid, receives 402
 4. **SIGN** — builds a genuine EIP-3009 `TransferWithAuthorization` and signs it with
@@ -107,7 +107,7 @@ python verify_security.py --base-url http://127.0.0.1:8402
 
 35 live attacks against the running server. Highlights:
 
-- `{"paid": true}` as an `X-PAYMENT` header — rejected; it does not decode into a
+- `{"paid": true}` as a `PAYMENT-SIGNATURE` header — rejected; it does not decode into a
   payment payload at all
 - amount tampered after signing — rejected, signature no longer recovers to the payer
 - recipient tampered after signing — rejected
@@ -117,7 +117,7 @@ python verify_security.py --base-url http://127.0.0.1:8402
 - redelivery — byte-identical artifact
 - full passport before maturity — 402
 
-Expected: `RESULT: 33/33 checks passed`.
+Expected: `RESULT: 35/35 checks passed`.
 
 ---
 

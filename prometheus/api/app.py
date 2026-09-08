@@ -5,8 +5,8 @@ These are PROMETHEUS routes. None of them is a Binance endpoint.
 The x402 flow lives on one resource:
 
     GET /api/purchases/{id}/delivery
-        without a valid X-PAYMENT -> 402 with payment requirements
-        with a verified X-PAYMENT -> 200 with the protected artifact
+        without a valid PAYMENT-SIGNATURE -> 402 with a PAYMENT-REQUIRED challenge
+        with a verified PAYMENT-SIGNATURE -> 200 with the protected artifact
 
 so a generic x402 client can drive it with no PROMETHEUS-specific knowledge, and
 the demo path and the production path are the same path.
@@ -27,13 +27,37 @@ from ..market.agentos import AgentOSProvider
 from ..market.binance import BinanceMarketData
 from ..marketplace import Marketplace, PurchaseError
 from ..model.registry import all_provider_status, build_provider
-from ..payments.x402 import HEADER_PAYMENT, HEADER_PAYMENT_RESPONSE, encode_settlement_response
+from ..payments.x402 import (
+    HEADER_PAYMENT,
+    HEADER_PAYMENT_REQUIRED,
+    HEADER_PAYMENT_RESPONSE,
+    LEGACY_HEADER_PAYMENT,
+    encode_payment_required,
+    encode_settlement_response,
+)
 from ..provenance import Status, now_iso
 from ..scheduler import Scheduler
 from ..signals.engine import SignalEngine, passport, public_preview
 from .. import reputation as reputation_mod
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
+
+
+def _challenge_from_stored_requirement(requirement: dict[str, Any], error: str) -> dict[str, Any]:
+    """Rebuild the x402 v2 PaymentRequired object from an invoice row.
+
+    Older persisted invoices contain v1's `maxAmountRequired`; they are kept
+    readable and are returned in their original shape instead of being silently
+    relabelled as v2.
+    """
+    version = 1 if "maxAmountRequired" in requirement else 2
+    if version == 1:
+        return {"x402Version": 1, "error": error, "accepts": [requirement]}
+    resource = requirement.get("resource")
+    if not isinstance(resource, dict):
+        resource = {"url": resource} if resource else {}
+    accepts = {k: v for k, v in requirement.items() if k != "resource"}
+    return {"x402Version": 2, "error": error, "resource": resource, "accepts": [accepts]}
 
 
 def create_app() -> FastAPI:
@@ -141,7 +165,7 @@ def create_app() -> FastAPI:
                 "pay_to": cfg.x402_pay_to,
                 "status": Status.VERIFIED_LOCAL.value,
                 "note": (
-                    "wire protocol implemented from the official x402 v1 specification; "
+                    "wire protocol implemented from the official x402 v2 specification; "
                     "see DISCOVERY.md section 3"
                 ),
             },
@@ -184,6 +208,7 @@ def create_app() -> FastAPI:
         """
         result = marketplace.create_purchase(signal_id, idempotency_key=idempotency_key)
         response.status_code = 402
+        response.headers[HEADER_PAYMENT_REQUIRED] = encode_payment_required(result["x402"])
         return result
 
     @app.get("/api/purchases/{purchase_id}", tags=["purchases"])
@@ -195,12 +220,13 @@ def create_app() -> FastAPI:
         purchase_id: str,
         response: Response,
         x_payment: str | None = Header(None, alias=HEADER_PAYMENT),
+        legacy_x_payment: str | None = Header(None, alias=LEGACY_HEADER_PAYMENT),
         x_transaction_hash: str | None = Header(None, alias="X-Transaction-Hash"),
     ):
         """The x402-protected resource.
 
         Without verified settlement this returns 402 and the payment requirements.
-        With a verified X-PAYMENT it returns the frozen artifact.
+        With a verified PAYMENT-SIGNATURE it returns the frozen artifact.
         """
         status = marketplace.purchase_status(purchase_id)
 
@@ -209,9 +235,10 @@ def create_app() -> FastAPI:
             artifact = marketplace.deliver(purchase_id)
             return JSONResponse(content=artifact)
 
-        if x_payment:
+        payment_header = x_payment or legacy_x_payment
+        if payment_header:
             result = marketplace.submit_payment(
-                purchase_id, x_payment, tx_hash=x_transaction_hash
+                purchase_id, payment_header, tx_hash=x_transaction_hash
             )
             settlement = result.get("settlement", {})
             if result["state"] == "PAID":
@@ -232,16 +259,18 @@ def create_app() -> FastAPI:
                     "SELECT requirements_json FROM purchases WHERE purchase_id = ?", (purchase_id,)
                 )["requirements_json"]
             )
+            challenge = _challenge_from_stored_requirement(
+                body, f"Payment failed: {settlement.get('reason', 'verification failed')}"
+            )
             return JSONResponse(
                 status_code=402,
                 content={
-                    "x402Version": cfg.x402_version,
-                    "error": f"Payment failed: {settlement.get('reason', 'verification failed')}",
-                    "accepts": [body],
+                    **challenge,
                     "purchase_state": result["state"],
                     "settlement": settlement,
                 },
                 headers={
+                    HEADER_PAYMENT_REQUIRED: encode_payment_required(challenge),
                     HEADER_PAYMENT_RESPONSE: encode_settlement_response(
                         success=False,
                         network=status["network"],
@@ -257,14 +286,16 @@ def create_app() -> FastAPI:
                 "SELECT requirements_json FROM purchases WHERE purchase_id = ?", (purchase_id,)
             )["requirements_json"]
         )
+        challenge = _challenge_from_stored_requirement(
+            body, "Payment required to access this resource"
+        )
         return JSONResponse(
             status_code=402,
             content={
-                "x402Version": cfg.x402_version,
-                "error": "Payment required to access this resource",
-                "accepts": [body],
+                **challenge,
                 "settlement": marketplace.verifier.describe(),
             },
+            headers={HEADER_PAYMENT_REQUIRED: encode_payment_required(challenge)},
         )
 
     # ------------------------------------------------------------ reputation
@@ -389,16 +420,22 @@ def create_app() -> FastAPI:
     def treasury() -> dict[str, Any]:
         rows = db.query("SELECT * FROM ledger ORDER BY created_at DESC LIMIT 200")
         total = db.query_one(
-            "SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS t FROM ledger WHERE kind='SIGNAL_SALE'"
+            "SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS t FROM ledger"
+            " WHERE kind='SIGNAL_SALE' AND environment <> 'SIMULATION'"
+        )["t"]
+        simulated = db.query_one(
+            "SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS t FROM ledger"
+            " WHERE kind='SIGNAL_SALE' AND environment='SIMULATION'"
         )["t"]
         return {
             "currency": cfg.price_currency,
             "environment": cfg.environment,
             "gross_revenue": f"{total:.6f}",
+            "simulated_authorization_value": f"{simulated:.6f}",
             "entries": [dict(r) for r in rows],
             "note": (
-                "revenue is booked only against settlement a verifier confirmed; see the "
-                "environment field for whether that settlement was simulated or on-chain"
+                "gross_revenue excludes SIMULATION authorizations because no funds moved; "
+                "see simulated_authorization_value and the environment field for settlement status"
             ),
         }
 

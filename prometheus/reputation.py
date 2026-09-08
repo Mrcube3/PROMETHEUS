@@ -147,12 +147,24 @@ def compute(db: Database, cfg: Config) -> dict[str, Any]:
         return {k: _cohort(v, min_sample) for k, v in sorted(buckets.items())}
 
     # --- economics ----------------------------------------------------------
+    # A signature-only authorization is deliberately not revenue: it proves a
+    # payer signed the invoice, but no funds moved. Count it separately so demand
+    # evidence is visible without turning simulation into settlement.
     rev = db.query_one(
         "SELECT COUNT(*) AS n, COALESCE(SUM(CAST(amount AS REAL)), 0) AS total, currency"
-        "  FROM purchases WHERE state = 'PAID'"
+        "  FROM purchases WHERE state = 'PAID' AND environment <> 'SIMULATION'"
+    )
+    authorized = db.query_one(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(CAST(amount AS REAL)), 0) AS total"
+        "  FROM purchases WHERE state = 'PAID' AND environment = 'SIMULATION'"
     )
     buyers = db.query(
-        "SELECT payer, COUNT(*) AS n FROM purchases WHERE state = 'PAID' AND payer IS NOT NULL GROUP BY payer"
+        "SELECT payer, COUNT(*) AS n FROM purchases WHERE state = 'PAID'"
+        " AND environment <> 'SIMULATION' AND payer IS NOT NULL GROUP BY payer"
+    )
+    simulated_buyers = db.query(
+        "SELECT payer, COUNT(*) AS n FROM purchases WHERE state = 'PAID'"
+        " AND environment = 'SIMULATION' AND payer IS NOT NULL GROUP BY payer"
     )
     repeat = sum(1 for b in buyers if b["n"] > 1)
 
@@ -182,6 +194,10 @@ def compute(db: Database, cfg: Config) -> dict[str, Any]:
             "currency": rev["currency"] or cfg.price_currency,
             "unique_buyers": len(buyers),
             "repeat_buyers": repeat,
+            "simulated_authorizations": authorized["n"] or 0,
+            "simulated_authorization_value": f"{authorized['total']:.6f}",
+            "simulated_buyers": len(simulated_buyers),
+            "revenue_note": "SIMULATION authorizations are excluded because no funds moved",
         },
     }
 

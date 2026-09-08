@@ -10,9 +10,9 @@ What it does:
   1. discovers listings on the open marketplace;
   2. selects one and opens a purchase, receiving HTTP 402;
   3. parses the real x402 payment requirements from the 402 body;
-  4. signs an EIP-3009 TransferWithAuthorization with its own key -- real EIP-712,
-     real secp256k1, no stub;
-  5. retries the protected resource with the X-PAYMENT header;
+  4. asks the connected Binance Agentic Wallet to preview and sign the selected
+     payment option;
+  5. retries the protected resource with the PAYMENT-SIGNATURE header;
   6. receives the artifact only if the seller independently verified settlement;
   7. recomputes the SHA-256 of the canonical JSON of the prediction and compares it
      to the signal_hash the seller published BEFORE payment.
@@ -22,25 +22,25 @@ artifact it received is the artifact that was frozen.
 
 Wallet note
 -----------
-By default the agent generates an ephemeral keypair, which is sufficient for the
-`signature_only` settlement verifier (a SIMULATION -- it proves authorisation, not
-that funds moved). To settle for real, set BUYER_PRIVATE_KEY to a funded key,
-broadcast the transfer yourself, and pass the resulting hash with --tx-hash; the
-seller will then verify it against the chain and only release on a confirmed
-on-chain Transfer.
-
-This agent never broadcasts a transaction itself.
+The production path uses `baw x402-payment preview/sign`, which selects the wallet's
+currently supported chain, token and transfer method at runtime. Signing requires
+an explicit `CONFIRM`. The old local EIP-3009 signer remains available only with
+`--payment-mode simulation` for hermetic tests.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
+import shutil
 import secrets
+import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -63,6 +63,48 @@ def canonical_json(value: Any) -> str:
 
 def sha256_hex(value: Any) -> str:
     return "sha256:" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+class BawError(RuntimeError):
+    """The configured Binance Agentic Wallet could not complete a wallet step."""
+
+
+def _baw_command() -> str:
+    """Resolve baw even when this process inherited a stale Windows PATH."""
+    configured = os.environ.get("BAW_BIN", "baw").strip()
+    if configured != "baw":
+        return configured
+    found = shutil.which("baw")
+    if found:
+        return found
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        candidate = Path(appdata) / "npm" / "baw.cmd"
+        if candidate.exists():
+            return str(candidate)
+    return configured
+
+
+def _run_baw(*args: str) -> dict[str, Any]:
+    """Run the documented Binance Agentic Wallet command and parse JSON only."""
+    try:
+        proc = subprocess.run(
+            [_baw_command(), *args, "--json"], capture_output=True, text=True,
+            timeout=60, stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise BawError(
+            f"Binance Agentic Wallet CLI unavailable: {type(exc).__name__}: {exc}"
+        ) from exc
+    if proc.returncode != 0:
+        raise BawError((proc.stderr or proc.stdout or "baw command failed").strip()[:500])
+    try:
+        result = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise BawError("baw returned non-JSON output") from exc
+    if not result.get("success", False):
+        raise BawError(str(result.get("error") or result)[:500])
+    return result
 
 
 class BuyerAgent:
@@ -109,10 +151,11 @@ class BuyerAgent:
     def sign_payment(self, requirements: dict[str, Any], chain_id: int) -> str:
         now = int(time.time())
         extra = requirements.get("extra") or {}
+        amount = str(requirements.get("amount", requirements.get("maxAmountRequired")))
         authorization = {
             "from": self.account.address,
             "to": requirements["payTo"],
-            "value": str(requirements["maxAmountRequired"]),
+            "value": amount,
             "validAfter": str(now - 60),
             "validBefore": str(now + int(requirements.get("maxTimeoutSeconds", 300))),
             "nonce": "0x" + secrets.token_hex(32),
@@ -156,12 +199,22 @@ class BuyerAgent:
         sig = signed.signature.hex()
         if not sig.startswith("0x"):
             sig = "0x" + sig
-        payload = {
-            "x402Version": 1,
-            "scheme": requirements["scheme"],
-            "network": requirements["network"],
-            "payload": {"signature": sig, "authorization": authorization},
-        }
+        if "amount" in requirements:
+            accepted = {k: v for k, v in requirements.items()
+                        if k in ("scheme", "network", "amount", "asset", "payTo", "maxTimeoutSeconds", "extra")}
+            payload = {
+                "x402Version": 2,
+                "resource": requirements.get("resource", {}),
+                "accepted": accepted,
+                "payload": {"signature": sig, "authorization": authorization},
+            }
+        else:
+            payload = {
+                "x402Version": 1,
+                "scheme": requirements["scheme"],
+                "network": requirements["network"],
+                "payload": {"signature": sig, "authorization": authorization},
+            }
         import base64
 
         return base64.b64encode(
@@ -170,13 +223,52 @@ class BuyerAgent:
 
     # -- 5. pay and collect --------------------------------------------------
     def pay_and_collect(
-        self, purchase_id: str, header: str, tx_hash: str | None = None
+        self, purchase_id: str, header: str, tx_hash: str | None = None,
+        header_name: str = "PAYMENT-SIGNATURE",
     ) -> tuple[int, dict[str, Any], dict[str, str]]:
-        headers = {"X-PAYMENT": header}
+        headers = {header_name: header}
         if tx_hash:
             headers["X-Transaction-Hash"] = tx_hash
         r = self.http.get(f"{self.base}/api/purchases/{purchase_id}/delivery", headers=headers)
         return r.status_code, r.json(), dict(r.headers)
+
+    def sign_with_baw(self, payment_required: dict[str, Any], *, confirm: bool) -> dict[str, Any]:
+        """Preview and sign one payment using the real Binance wallet CLI."""
+        # The CLI documents raw JSON, but its current backend reliably parses
+        # the base64 PAYMENT-REQUIRED representation carried by HTTP x402.
+        encoded_requirements = base64.b64encode(
+            json.dumps(
+                payment_required, separators=(",", ":"), sort_keys=True,
+            ).encode("utf-8")
+        ).decode("ascii")
+        preview = _run_baw(
+            "x402-payment", "preview",
+            "--paymentRequirements", encoded_requirements,
+        )
+        options = (preview.get("data") or {}).get("options") or []
+        ready = next((o for o in options if o.get("status") == "READY_TO_SIGN"), None)
+        if ready is None:
+            raise BawError(f"no READY_TO_SIGN payment option returned: {options}")
+        if not confirm:
+            try:
+                answer = input(
+                    f"Pay {ready.get('amount')} {ready.get('tokenSymbol', 'token')} on "
+                    f"chain {ready.get('binanceChainId')} to {ready.get('payTo')}? "
+                    "Type CONFIRM to sign: "
+                ).strip()
+            except EOFError as exc:
+                raise BawError("payment signing cancelled: interactive confirmation is required") from exc
+            if answer != "CONFIRM":
+                raise BawError("payment signing cancelled: confirmation was not provided")
+        payment_id = (preview.get("data") or {}).get("paymentId")
+        signed = _run_baw(
+            "x402-payment", "sign", "--paymentId", str(payment_id),
+            "--selectedIndex", str(ready["index"]),
+        )
+        data = signed.get("data") or {}
+        if not data.get("paymentHeaderName") or not data.get("paymentHeaderValue"):
+            raise BawError("baw did not return a payment header")
+        return data
 
     # -- 6. verify -----------------------------------------------------------
     @staticmethod
@@ -206,6 +298,11 @@ def main() -> int:
     ap.add_argument("--asset", default=None, help="filter listings by asset")
     ap.add_argument("--signal-id", default=None, help="buy this specific signal")
     ap.add_argument("--tx-hash", default=None, help="settled transaction hash for on-chain verification")
+    ap.add_argument(
+        "--payment-mode", choices=("baw", "simulation"), default="baw",
+        help="production Binance Agentic Wallet flow, or explicit local simulation for tests",
+    )
+    ap.add_argument("--confirm", action="store_true", help="skip the interactive CONFIRM prompt")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args()
 
@@ -255,7 +352,8 @@ def main() -> int:
         # 2. OPEN PURCHASE -> 402
         purchase = agent.open_purchase(chosen["signal_id"])
         purchase_id = purchase["purchase_id"]
-        requirements = purchase["x402"]["accepts"][0]
+        requirements = dict(purchase["x402"]["accepts"][0])
+        requirements["resource"] = purchase["x402"].get("resource", {})
         report["purchase_id"] = purchase_id
         report["payment_requirements"] = requirements
         report["settlement_mode"] = purchase["settlement"]
@@ -265,7 +363,7 @@ def main() -> int:
             print(f"purchase_id : {purchase_id}")
             print(f"x402Version : {purchase['x402']['x402Version']}")
             print(f"scheme      : {requirements['scheme']}   network: {requirements['network']}")
-            print(f"amount      : {requirements['maxAmountRequired']} atomic units of {requirements['asset']}")
+            print(f"amount      : {requirements.get('amount', requirements.get('maxAmountRequired'))} atomic units of {requirements['asset']}")
             print(f"payTo       : {requirements['payTo']}")
             print(f"settlement  : {purchase['settlement']['verifier']} "
                   f"[{purchase['settlement']['status']}] env={purchase['settlement']['environment']}")
@@ -277,18 +375,38 @@ def main() -> int:
             _hr("3. PAYWALL CHECK (unpaid request)")
             print(f"HTTP 402 confirmed. Server said: {probe.get('error')}")
 
-        # 4. SIGN
-        chain_id = int(purchase["settlement"].get("chain_id") or os.environ.get("BUYER_CHAIN_ID", "97"))
-        header = agent.sign_payment(requirements, chain_id)
-        report["x_payment_header_bytes"] = len(header)
-        if not quiet:
-            _hr("4. SIGN EIP-3009 AUTHORIZATION")
-            print(f"chainId {chain_id}, domain {requirements.get('extra', {}).get('name')} "
-                  f"v{requirements.get('extra', {}).get('version')}")
-            print(f"X-PAYMENT header built: {len(header)} base64 chars")
+        # 4. PAY using the actual connected Binance wallet, or explicitly opt in
+        # to the local signature-only simulation used by hermetic security tests.
+        if args.payment_mode == "baw":
+            if purchase.get("settlement", {}).get("status") == "SIMULATION":
+                raise BawError(
+                    "seller is configured for SIMULATION settlement; refusing to sign. "
+                    "Configure a verified on-chain or facilitator settlement before using --payment-mode baw."
+                )
+            signed = agent.sign_with_baw(purchase["x402"], confirm=args.confirm)
+            header_name = signed["paymentHeaderName"]
+            header = signed["paymentHeaderValue"]
+            report["payment_mode"] = "binance-agentic-wallet"
+            report["payment_signing"] = {k: signed.get(k) for k in ("binanceChainId", "signatureExpiresAt", "approveTxHash")}
+            if not quiet:
+                _hr("4. BINANCE AGENTIC WALLET PAYMENT")
+                print(f"header     : {header_name}")
+                print(f"expires at : {signed.get('signatureExpiresAt')}")
+        else:
+            chain_id = int(purchase["settlement"].get("chain_id") or os.environ.get("BUYER_CHAIN_ID", "56"))
+            header = agent.sign_payment(requirements, chain_id)
+            header_name = "PAYMENT-SIGNATURE"
+            report["payment_mode"] = "simulation"
+            report["x_payment_header_bytes"] = len(header)
+            if not quiet:
+                _hr("4. LOCAL SIMULATION PAYMENT")
+                print("WARNING: signature_only proves authorization only; no funds move.")
+                print(f"PAYMENT-SIGNATURE header built: {len(header)} base64 chars")
 
         # 5. PAY AND COLLECT
-        status, body, headers = agent.pay_and_collect(purchase_id, header, args.tx_hash)
+        status, body, headers = agent.pay_and_collect(
+            purchase_id, header, args.tx_hash, header_name=header_name
+        )
         report["delivery_status"] = status
         if status != 200:
             report["error"] = "payment was not accepted"
@@ -304,11 +422,13 @@ def main() -> int:
         report["artifact_delivered"] = True
         if not quiet:
             _hr("5. PAYMENT VERIFIED, ARTIFACT DELIVERED")
-            xpr = headers.get("x-payment-response") or headers.get("X-PAYMENT-RESPONSE")
+            xpr = (
+                headers.get("payment-response")
+                or headers.get("x-payment-response")
+                or headers.get("X-PAYMENT-RESPONSE")
+            )
             if xpr:
-                import base64
-
-                print(f"X-PAYMENT-RESPONSE: {json.loads(base64.b64decode(xpr))}")
+                print(f"PAYMENT-RESPONSE: {json.loads(base64.b64decode(xpr))}")
             d = artifact.get("delivery", {})
             print(f"settlement verifier: {d.get('settlement_verifier')}  "
                   f"status: {d.get('settlement_status')}  env: {d.get('environment')}")

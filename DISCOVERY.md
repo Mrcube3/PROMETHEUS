@@ -127,6 +127,16 @@ does not change that.
 
 ## 3. x402
 
+### Current Binance wallet flow
+
+The current Binance Agentic Wallet reference is x402 v2. It uses CAIP-2 network
+identifiers (BSC `eip155:56`), the `PAYMENT-REQUIRED` challenge header,
+`PAYMENT-SIGNATURE` request header, and `PAYMENT-RESPONSE` settlement header.
+Payment options are selected from the wallet's runtime `accepts` preview; the
+wallet may report `eip3009` or `permit2` depending on the returned option. The
+production buyer path delegates preview and signing to the documented `baw`
+commands and never fabricates a payment header.
+
 ### Protocol source
 
 Official specification files downloaded from the x402 specification repository:
@@ -140,7 +150,8 @@ Official specification files downloaded from the x402 specification repository:
 Retained under `.discovery/`. Every protocol detail in this build is copied from those
 files — none is invented.
 
-Verified v1 HTTP transport:
+The retained v1 files document the legacy transport used for backward-compatible
+invoice decoding. New PROMETHEUS invoices use the current v2 transport:
 
 - `402 Payment Required` plus JSON body `{x402Version, error, accepts[]}`.
 - `accepts[]` entry fields: `scheme`, `network`, `maxAmountRequired`, `asset`, `payTo`,
@@ -247,7 +258,7 @@ static dashboard are used instead, so the build has no unmet dependency.
 | GREEN — Binance Skills Hub | `VERIFIED_LOCAL` | 19 official skills installed via `npx skills add` | Installed under `.agents/skills/` |
 | RED — `binance-cli` on this host | `UNAVAILABLE` | Upstream ships no Windows build; cargo build blocked on OpenSSL/MSVC | Integrated as corroboration surface; activates unchanged on Linux/macOS |
 | GREEN — Agent OS corroboration logic | `VERIFIED_LOCAL` | 19 tests covering AGREED / DISPUTED / UNAVAILABLE | Disputed snapshots are refused publication |
-| GREEN — x402 v1 wire protocol | `VERIFIED_LOCAL` | Official specs, section 3 | Implemented verbatim, conformance-tested |
+| GREEN — x402 v2 wire protocol | `VERIFIED_LOCAL` | Current official x402 specification and Binance Agentic Wallet reference, section 3 | Implemented for new invoices; legacy v1 decoding retained |
 | RED — EIP-3009 settlement token on BSC testnet | `UNVERIFIED` | Contract reads show no `DOMAIN_SEPARATOR` / `authorizationState` | Gasless facilitator path not claimed; `onchain` Transfer-log path used instead |
 | GREEN — EIP-3009 / EIP-712 recovery | `VERIFIED_LOCAL` | `eth-account 0.13.7` | Real cryptographic verification |
 | GREEN — BSC RPC read access | `VERIFIED_LIVE` | `eth_chainId` 0x61 / 0x38 | On-chain settlement verifier |

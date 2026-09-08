@@ -81,27 +81,30 @@ class Config:
     base_price: Decimal = field(default_factory=lambda: _env_dec("BASE_PRICE", "0.25"))
     min_price: Decimal = field(default_factory=lambda: _env_dec("MIN_PRICE", "0.05"))
     max_price: Decimal = field(default_factory=lambda: _env_dec("MAX_PRICE", "5.00"))
-    price_currency: str = field(default_factory=lambda: _env("PRICE_CURRENCY", "USDC"))
+    price_currency: str = field(default_factory=lambda: _env("PRICE_CURRENCY", "USDT"))
     price_decimals: int = field(default_factory=lambda: _env_int("PRICE_DECIMALS", 6))
     min_reputation_sample: int = field(default_factory=lambda: _env_int("MIN_REPUTATION_SAMPLE", 20))
 
     # --- x402 ----------------------------------------------------------------
-    x402_version: int = field(default_factory=lambda: _env_int("X402_VERSION", 1))
+    # Binance's current Agentic Wallet payment flow speaks x402 v2 on BSC.
+    # Version 1 remains decodable for reconciliation of old persisted invoices,
+    # but new invoices default to the current wire format.
+    x402_version: int = field(default_factory=lambda: _env_int("X402_VERSION", 2))
     x402_scheme: str = field(default_factory=lambda: _env("X402_SCHEME", "exact"))
-    # CAIP-2-ish network label used in the 402 body. Default is BSC testnet.
-    x402_network: str = field(default_factory=lambda: _env("X402_NETWORK", "bsc-testnet"))
-    x402_chain_id: int = field(default_factory=lambda: _env_int("X402_CHAIN_ID", 97))
-    # Verified on BSC testnet (chain 97) during discovery by reading the contract:
-    # name() = "Tether USD", symbol() = "USDT", decimals() = 18.
-    # NOTE: this contract does NOT implement EIP-3009 (no DOMAIN_SEPARATOR, no
-    # authorizationState). It is therefore usable by the `onchain` verifier, which
-    # matches ERC-20 Transfer logs, but gasless EIP-3009 settlement through a
-    # facilitator would require a 3009-capable token. See DISCOVERY.md section 3.
+    # x402 v2 uses CAIP-2 network labels. Binance's current wallet reference
+    # identifies BSC as eip155:56 and its common BSC USDT address below.
+    x402_network: str = field(default_factory=lambda: _env("X402_NETWORK", "eip155:56"))
+    x402_chain_id: int = field(default_factory=lambda: _env_int("X402_CHAIN_ID", 56))
     x402_asset: str = field(
-        default_factory=lambda: _env("X402_ASSET", "0x66E972502A34A625828C544a1914E8D8cc2A9dE5")
+        default_factory=lambda: _env("X402_ASSET", "0x55d398326f99059fF775485246999027B3197955")
     )
     x402_asset_name: str = field(default_factory=lambda: _env("X402_ASSET_NAME", "Tether USD"))
     x402_asset_version: str = field(default_factory=lambda: _env("X402_ASSET_VERSION", "1"))
+    # BSC USDT does not expose EIP-3009 transferWithAuthorization. Permit2 is
+    # the universal x402 exact fallback for ordinary ERC-20 tokens.
+    x402_asset_transfer_method: str = field(
+        default_factory=lambda: _env("X402_ASSET_TRANSFER_METHOD", "permit2")
+    )
     x402_asset_decimals: int = field(default_factory=lambda: _env_int("X402_ASSET_DECIMALS", 18))
     # Receive-only merchant address. PROMETHEUS holds no key for it and has no
     # code path that can spend from it: there is no withdrawal capability in this
@@ -136,7 +139,7 @@ class Config:
         default_factory=lambda: _env("SETTLEMENT_VERIFIER", VERIFIER_SIGNATURE_ONLY)
     )
     evm_rpc_url: str = field(
-        default_factory=lambda: _env("EVM_RPC_URL", "https://bsc-testnet-dataseed.bnbchain.org")
+        default_factory=lambda: _env("EVM_RPC_URL", "https://bsc-dataseed.bnbchain.org")
     )
     required_confirmations: int = field(default_factory=lambda: _env_int("REQUIRED_CONFIRMATIONS", 1))
 
@@ -188,6 +191,10 @@ class Config:
         if self.settlement_verifier == VERIFIER_FACILITATOR and not self.x402_facilitator_url:
             raise ConfigError(
                 "PROM_SETTLEMENT_VERIFIER=facilitator requires PROM_X402_FACILITATOR_URL"
+            )
+        if self.x402_asset_transfer_method not in ("eip3009", "permit2"):
+            raise ConfigError(
+                "PROM_X402_ASSET_TRANSFER_METHOD must be 'eip3009' or 'permit2'"
             )
         if self.min_price > self.max_price:
             raise ConfigError("PROM_MIN_PRICE must not exceed PROM_MAX_PRICE")
