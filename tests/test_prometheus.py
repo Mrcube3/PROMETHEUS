@@ -734,8 +734,10 @@ class TestLiveBinance:
         """A dead primary must fail over, not fail."""
         from prometheus.market.binance import BinanceMarketData
 
+        # Generous timeout: this test proves failover happens, not that the
+        # surviving host meets any particular latency budget.
         m = BinanceMarketData(
-            ["https://127.0.0.1:1", "https://api.binance.com"], timeout_s=3
+            ["https://127.0.0.1:1", "https://api.binance.com"], timeout_s=20
         )
         try:
             assert m.ping()["status"] == "VERIFIED_LIVE"

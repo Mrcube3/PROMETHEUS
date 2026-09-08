@@ -58,8 +58,8 @@ Real output from this build, against live Binance:
 Test results:
 
 ```
-python -m pytest tests/ -q     ->  67 passed
-python verify_security.py      ->  30/30 checks passed
+python -m pytest tests/ -q     ->  86 passed
+python verify_security.py      ->  33/33 checks passed
 ```
 
 ---
@@ -237,7 +237,32 @@ the same features an LLM would and emits the same validated schema, so every
 economically meaningful path — validation, freeze, pricing, settlement, delivery,
 outcome, reputation — runs identically. Swapping in a real model changes one class.
 
-Full evidence, including live command output, is in [DISCOVERY.md](DISCOVERY.md).
+### Binance Agent OS — a second witness, not decoration
+
+The official `binance-cli` is integrated as an **independent corroboration
+surface**. PROMETHEUS seals a market snapshot into a hash and sells it, so a
+single-witness snapshot is a liability: a bad response or hijacked host silently
+becomes sold evidence. The Agent OS CLI — separate binary, separate transport — is
+asked the same question, and the verdict is sealed into the snapshot *before*
+hashing:
+
+| Verdict | Effect |
+|---|---|
+| `AGREED` | Publish |
+| `DISPUTED` | **Signal refused**, recorded `CORROBORATION_FAILED` |
+| `UNAVAILABLE` | Publish, permanently recorded as single-witness |
+
+`UNAVAILABLE` is deliberately not `AGREED` — an absent witness is never
+confirmation. Live, from a real signal: REST `2484.39`, Agent OS `2484.04`,
+`1.4088` bps apart, `AGREED`.
+
+Scope is read-only and test-enforced: only the unauthenticated `spot ticker-price`
+command is issued, `BINANCE_API_KEY`/`BINANCE_SECRET_KEY` are stripped from the
+subprocess environment, and the module has no account, order or withdrawal path to
+disable because none is written. **PROMETHEUS holds no Binance API key.**
+
+Full evidence, including live command output, is in [DISCOVERY.md](DISCOVERY.md)
+and [AGENT_OS.md](AGENT_OS.md).
 
 ---
 

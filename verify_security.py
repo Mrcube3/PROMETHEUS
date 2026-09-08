@@ -189,8 +189,20 @@ def main() -> int:
     check("sample size n is always reported", "n" in rep, f"n={rep.get('n')}")
 
     ps = http.get(f"{base}/provider-status").json()
-    check("Binance Agent OS is reported UNAVAILABLE, not claimed",
-          ps["binance_agent_os"]["status"] == "UNAVAILABLE")
+    # Agent OS must never be claimed live without an actual successful probe, and
+    # must never be reported as authenticated -- PROMETHEUS holds no Binance key.
+    aos = ps["binance_agent_os"]
+    valid = {"VERIFIED_LIVE", "VERIFIED_LOCAL", "ADAPTER_ONLY", "UNAVAILABLE", "BROKEN"}
+    check("Binance Agent OS status is from the honest vocabulary",
+          aos["status"] in valid, f"status={aos['status']}")
+    check("Agent OS is only VERIFIED_LIVE when a real probe succeeded",
+          aos["status"] != "VERIFIED_LIVE" or bool(aos.get("probe")),
+          f"status={aos['status']} probe={aos.get('probe')}")
+    check("Agent OS is never reported as authenticated",
+          aos["authenticated"] is False)
+    check("Agent OS exposes no account/order/withdrawal capability",
+          all(x in aos["not_implemented"]
+              for x in ("account data", "order placement", "withdrawals")))
     check("inactive model adapters are ADAPTER_ONLY, not 'working'",
           all(p["status"] in ("ADAPTER_ONLY", "UNAVAILABLE", "UNVERIFIED", "BROKEN")
               for p in ps["model_providers"] if not p["active"]))

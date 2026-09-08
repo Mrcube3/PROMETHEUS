@@ -117,6 +117,10 @@ class Config:
     agentos_enabled: bool = field(default_factory=lambda: _env_bool("AGENTOS_ENABLED", True))
     agentos_binary: str = field(default_factory=lambda: _env("AGENTOS_BINARY", "binance-cli"))
     agentos_api_env: str = field(default_factory=lambda: _env("AGENTOS_API_ENV", "prod"))
+    # Windows has no upstream binance-cli build; the official Linux binary is
+    # reached through a WSL distribution when one is configured.
+    agentos_wsl_distro: str = field(default_factory=lambda: _env("AGENTOS_WSL_DISTRO", ""))
+    agentos_wsl_user: str = field(default_factory=lambda: _env("AGENTOS_WSL_USER", "root"))
     agentos_tolerance_bps: Decimal = field(
         default_factory=lambda: _env_dec("AGENTOS_TOLERANCE_BPS", "50")
     )

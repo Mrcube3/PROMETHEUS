@@ -134,13 +134,34 @@ class AgentOSProvider:
         timeout_s: float = 25.0,
         api_env: str = "prod",
         extra_paths: list[str] | None = None,
+        wsl_distro: str | None = None,
+        wsl_user: str = "root",
     ) -> None:
         self.timeout_s = timeout_s
         self.api_env = api_env
         self._version: str | None = None
         self._probe_error: str | None = None
         self._verified_call = False
-        self.binary = self._resolve(binary, extra_paths or [])
+        # WSL bridge. Upstream ships no Windows build of binance-cli, so on Windows
+        # the official Linux binary is reached through a WSL distribution. The
+        # command is otherwise identical, so nothing downstream changes.
+        self.wsl_distro = wsl_distro or None
+        self.wsl_user = wsl_user
+        if self.wsl_distro:
+            # Under WSL the path is a Linux path; do not resolve it against the
+            # Windows filesystem.
+            self.binary = binary
+        else:
+            self.binary = self._resolve(binary, extra_paths or [])
+
+    def _prefix(self) -> list[str]:
+        if not self.wsl_distro:
+            return []
+        return ["wsl.exe", "-d", self.wsl_distro, "-u", self.wsl_user, "--"]
+
+    @property
+    def transport(self) -> str:
+        return f"wsl:{self.wsl_distro}" if self.wsl_distro else "native"
 
     # -- discovery -----------------------------------------------------------
     @staticmethod
@@ -174,7 +195,7 @@ class AgentOSProvider:
         if not self.binary:
             raise AgentOSUnavailable("binance-cli is not installed on this host")
 
-        cmd = [self.binary, *args]
+        cmd = [*self._prefix(), self.binary, *args]
         printable = "binance-cli " + " ".join(args)
 
         # A deliberately minimal environment: the API credential variables are
@@ -187,7 +208,14 @@ class AgentOSProvider:
         started = time.time()
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=self.timeout_s, env=env,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_s,
+                env=env,
+                # Never inherit stdin. A CLI that decides to prompt would otherwise
+                # block the scheduler thread indefinitely.
+                stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired as exc:
             raise AgentOSUnavailable(f"{printable} timed out after {self.timeout_s}s") from exc
@@ -224,7 +252,9 @@ class AgentOSProvider:
             return None
         try:
             proc = subprocess.run(
-                [self.binary, "--version"], capture_output=True, text=True, timeout=15
+                [*self._prefix(), self.binary, "--version"],
+                capture_output=True, text=True, timeout=30,
+                stdin=subprocess.DEVNULL,
             )
             out = ((proc.stdout or "") + (proc.stderr or "")).strip()
             self._version = out.splitlines()[0].strip() if out else None
@@ -255,6 +285,7 @@ class AgentOSProvider:
             "surface": AGENT_OS_SURFACE,
             "skill": SKILL_REFERENCE,
             "binary": self.binary,
+            "transport": self.transport,
             "api_env": self.api_env,
             "scope": "read-only market data",
             "authenticated": False,

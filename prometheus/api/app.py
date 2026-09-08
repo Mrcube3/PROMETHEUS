@@ -42,7 +42,11 @@ def create_app() -> FastAPI:
     market = BinanceMarketData(cfg.binance_hosts, cfg.http_timeout_s)
     provider = build_provider(cfg)
     agentos = AgentOSProvider(
-        cfg.agentos_binary, timeout_s=cfg.http_timeout_s * 2, api_env=cfg.agentos_api_env
+        cfg.agentos_binary,
+        timeout_s=cfg.http_timeout_s * 3,
+        api_env=cfg.agentos_api_env,
+        wsl_distro=cfg.agentos_wsl_distro or None,
+        wsl_user=cfg.agentos_wsl_user,
     )
     engine = SignalEngine(db, cfg, market, provider, agentos=agentos)
     marketplace = Marketplace(db, cfg, engine)
