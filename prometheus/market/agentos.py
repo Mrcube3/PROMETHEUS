@@ -187,7 +187,12 @@ class AgentOSProvider:
         return self.binary is not None
 
     # -- transport -----------------------------------------------------------
-    def _run(self, args: list[str]) -> tuple[Any, str, int]:
+    def _run(
+        self,
+        args: list[str],
+        *,
+        stdin_json: dict[str, Any] | None = None,
+    ) -> tuple[Any, str, int]:
         """Run binance-cli and parse stdout as JSON.
 
         Returns (payload, command_string, latency_ms).
@@ -206,17 +211,23 @@ class AgentOSProvider:
         env["BINANCE_API_ENV"] = self.api_env
 
         started = time.time()
+        input_text = None if stdin_json is None else json.dumps(stdin_json)
+        run_kwargs: dict[str, Any] = {
+            "capture_output": True,
+            "text": True,
+            "timeout": self.timeout_s,
+            "env": env,
+        }
+        if input_text is None:
+            # Never inherit the parent stdin: a CLI that decides to prompt would
+            # otherwise block the scheduler thread indefinitely.
+            run_kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            # Passing input makes subprocess.run create a private stdin pipe.
+            # Only the explicit unauthenticated market parameters are sent.
+            run_kwargs["input"] = input_text
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_s,
-                env=env,
-                # Never inherit stdin. A CLI that decides to prompt would otherwise
-                # block the scheduler thread indefinitely.
-                stdin=subprocess.DEVNULL,
-            )
+            proc = subprocess.run(cmd, **run_kwargs)
         except subprocess.TimeoutExpired as exc:
             raise AgentOSUnavailable(f"{printable} timed out after {self.timeout_s}s") from exc
         except OSError as exc:
@@ -265,7 +276,10 @@ class AgentOSProvider:
     # -- market surface (unauthenticated only) -------------------------------
     def ticker_price(self, symbol: str) -> AgentOSQuote:
         """Spot ticker price for ``symbol`` via the Agent OS CLI."""
-        payload, cmd, latency = self._run(["spot", "ticker-price", "--symbol", symbol])
+        payload, cmd, latency = self._run(
+            ["spot", "ticker-price", "--symbol", symbol],
+            stdin_json={"symbol": symbol},
+        )
         price = _find_price(payload)
         if price is None:
             raise AgentOSUnavailable(
