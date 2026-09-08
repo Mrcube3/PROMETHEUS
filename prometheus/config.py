@@ -48,7 +48,11 @@ class ConfigError(RuntimeError):
 @dataclass
 class Config:
     # --- storage -------------------------------------------------------------
-    db_path: str = field(default_factory=lambda: _env("DB_PATH", "prometheus.db"))
+    db_path: str = field(
+        default_factory=lambda: _env(
+            "DB_PATH", "/tmp/prometheus.db" if os.environ.get("VERCEL") else "prometheus.db"
+        )
+    )
 
     # --- market --------------------------------------------------------------
     binance_hosts: list[str] = field(
