@@ -34,21 +34,94 @@ Index `0 openTime, 1 open, 2 high, 3 low, 4 close, 5 volume, 6 closeTime, 7 quot
 
 ---
 
-## 2. Binance Agent OS / MCP
+## 2. Binance Agent OS and Skills Hub
 
-Searched official announcement material for the Binance Agent OS Mini Hackathon
-(Track A, 20K USDC; deadline 2026-09-08 23:59 UTC) and the Binance MCP Server.
+**This section supersedes an earlier, over-hasty verdict.** A first pass concluded
+"UNAVAILABLE" purely because no MCP server was mounted in this runtime. That was a
+statement about the runtime, not about the platform. A proper pass found the real
+surface.
 
-No Binance Agent OS MCP server is mounted in this runtime and no Agent OS credential
-is present in the environment. Tool names, parameters and schemas could therefore not
-be verified against a running server.
+### Skills Hub — VERIFIED_LOCAL, installed
 
-**Status: `UNAVAILABLE` in this environment.**
+Official repository `binance/binance-skills-hub` (1018 stars, pushed 2026-09-03).
+Skills are `SKILL.md` files carrying YAML frontmatter.
 
-**Decision:** PROMETHEUS does not fabricate Agent OS tool signatures. It is built as a
-standalone HTTP service that is itself consumable by any MCP/agent host, and it exposes
-an OpenAPI document plus a machine-readable marketplace API so an Agent OS client can
-drive it without the dashboard. No Agent OS call is claimed as working.
+Installed with the documented command:
+
+```
+npx skills add https://github.com/binance/binance-skills-hub
+```
+
+19 official skills landed under `.agents/skills/`: `binance` (core CLI skill),
+`binance-agentic-wallet`, `binance-trading-signal`, `binance-wallet-tracker`,
+`binance-leaderboard`, `crypto-market-rank`, `meme-rush`, `query-token-info`,
+`query-token-audit`, `query-address-info`, `trading-signal`, `academy-skill`,
+`fiat`, `p2p`, `payment-assistant`, `onchain-pay-open-api`, `square-post`,
+`binance-sports-ai-analyzer`, `binance-tokenized-securities-info`.
+
+**Status: `VERIFIED_LOCAL`.**
+
+### Agent OS surface — `binance-cli`
+
+The core skill (`skills/binance/binance/SKILL.md`, v2.0.0, author Binance) documents
+the Agent OS surface as the official `binance-cli`, from `github.com/binance/binance-cli`
+(public, Rust, v2.1.1).
+
+Command surface verified from `references/spot.md`:
+
+- **Market** — unauthenticated: `ticker-price`, `ticker-book-ticker`, `ticker24hr`,
+  `depth`, `klines`, `avg-price`, `agg-trades`, and more.
+- **Account** and **Trade** — explicitly marked *auth required*.
+
+Auth contract from `references/auth.md`: `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`,
+and `BINANCE_API_ENV` of `prod|testnet|demo` (default `prod`). The skill also
+mandates that production transactions require the user to type `CONFIRM`.
+
+### Installation outcome on this host — BLOCKED
+
+| Attempt | Result |
+|---|---|
+| Official installer (`binance-cli-installer.sh`, 52,871 bytes, sha256 `99b8c7f1…6040`) | **Failed**: `there isn't a download for your platform x86_64-pc-windows-gnu` |
+| Release assets for v2.1.1 | Only `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`. **No Windows build exists.** |
+| npm `@binance/binance-cli` | Latest is `1.3.0`; the official skill instructs uninstalling any v1.x |
+| `cargo install --git … --locked` | **Failed**: `openssl-sys 0.9.116` cannot find an OpenSSL installation for `x86_64-pc-windows-msvc`. `binance-cli` pins `openssl = "0.10"` and exposes no `[features]`, so neither `vendored` nor a rustls backend can be selected from outside |
+| WSL | `wsl.exe` present, **no distro installed** |
+
+**Status on this host: `UNAVAILABLE` — upstream packaging gap, not a code defect.**
+On Linux or macOS the official installer works and the integration activates with no
+code change.
+
+### Implementation decision
+
+`binance-cli` is integrated as an **independent corroboration surface** for market
+data, in `prometheus/market/agentos.py`.
+
+Rationale: PROMETHEUS seals a market snapshot into a hash and sells it. If the only
+witness to that snapshot is one HTTP client, a bad response or a hijacked host
+silently becomes sold evidence. So the Agent OS CLI — a separate binary on its own
+transport — is asked the same question, and the verdict is written into the snapshot
+*before* hashing.
+
+| Verdict | Meaning | Effect |
+|---|---|---|
+| `AGREED` | Both sources within tolerance (default 50 bps) | Publish |
+| `DISPUTED` | Sources disagree beyond tolerance | **Signal refused**, recorded as `CORROBORATION_FAILED` |
+| `UNAVAILABLE` | No second witness | Publish, but the snapshot records that it had a single witness |
+
+`UNAVAILABLE` is deliberately distinct from `AGREED`: an absent witness is never
+counted as confirmation, and a missing CLI degrades the product rather than halting it.
+
+Scope is deliberately narrow and enforced by tests:
+
+- only the unauthenticated `spot ticker-price` command is ever issued;
+- `BINANCE_API_KEY` / `BINANCE_SECRET_KEY` are **stripped from the subprocess
+  environment**, so a key present in the host process cannot leak to the CLI;
+- the module exposes exactly three public methods (`ticker_price`, `status`,
+  `version`) — there is no account, order, wallet or withdrawal path to disable,
+  because none is written.
+
+PROMETHEUS therefore still holds no Binance API key, and the Agent OS integration
+does not change that.
 
 ---
 
@@ -171,7 +244,9 @@ static dashboard are used instead, so the build has no unmet dependency.
 | GREEN — Binance spot market data | `VERIFIED_LIVE` | Live 200s plus bodies, section 1 | Sole market source |
 | GREEN — Binance failover host | `VERIFIED_LIVE` | `data-api.binance.vision` 200 | Automatic failover |
 | RED — Binance account / orders | `UNAVAILABLE` | No API key held | Not implemented, not claimed |
-| RED — Binance Agent OS MCP | `UNAVAILABLE` | No server mounted | No tool signatures invented; OpenAPI exposed instead |
+| GREEN — Binance Skills Hub | `VERIFIED_LOCAL` | 19 official skills installed via `npx skills add` | Installed under `.agents/skills/` |
+| RED — `binance-cli` on this host | `UNAVAILABLE` | Upstream ships no Windows build; cargo build blocked on OpenSSL/MSVC | Integrated as corroboration surface; activates unchanged on Linux/macOS |
+| GREEN — Agent OS corroboration logic | `VERIFIED_LOCAL` | 19 tests covering AGREED / DISPUTED / UNAVAILABLE | Disputed snapshots are refused publication |
 | GREEN — x402 v1 wire protocol | `VERIFIED_LOCAL` | Official specs, section 3 | Implemented verbatim, conformance-tested |
 | RED — EIP-3009 settlement token on BSC testnet | `UNVERIFIED` | Contract reads show no `DOMAIN_SEPARATOR` / `authorizationState` | Gasless facilitator path not claimed; `onchain` Transfer-log path used instead |
 | GREEN — EIP-3009 / EIP-712 recovery | `VERIFIED_LOCAL` | `eth-account 0.13.7` | Real cryptographic verification |

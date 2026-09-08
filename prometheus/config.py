@@ -112,6 +112,21 @@ class Config:
     x402_timeout_seconds: int = field(default_factory=lambda: _env_int("X402_TIMEOUT_SECONDS", 300))
     x402_facilitator_url: str = field(default_factory=lambda: _env("X402_FACILITATOR_URL", "").rstrip("/"))
 
+    # --- Binance Agent OS (binance-cli) --------------------------------------
+    # Read-only corroboration surface. No credential is ever read or passed.
+    agentos_enabled: bool = field(default_factory=lambda: _env_bool("AGENTOS_ENABLED", True))
+    agentos_binary: str = field(default_factory=lambda: _env("AGENTOS_BINARY", "binance-cli"))
+    agentos_api_env: str = field(default_factory=lambda: _env("AGENTOS_API_ENV", "prod"))
+    agentos_tolerance_bps: Decimal = field(
+        default_factory=lambda: _env_dec("AGENTOS_TOLERANCE_BPS", "50")
+    )
+    # When true, a DISPUTED snapshot is refused rather than published. An
+    # UNAVAILABLE second witness never blocks: absence of corroboration is not
+    # the same as contradiction.
+    agentos_require_agreement: bool = field(
+        default_factory=lambda: _env_bool("AGENTOS_REQUIRE_AGREEMENT", True)
+    )
+
     # --- settlement verification --------------------------------------------
     settlement_verifier: str = field(
         default_factory=lambda: _env("SETTLEMENT_VERIFIER", VERIFIER_SIGNATURE_ONLY)

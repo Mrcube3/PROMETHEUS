@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from ..canonical import sha256_hex
 from ..config import Config
 from ..db import Database
+from ..market.agentos import AgentOSProvider, DISPUTED, corroborate
 from ..market.binance import BinanceMarketData, MarketDataUnavailable
 from ..model.base import ModelProvider, ModelRequest, ProviderError
 from ..provenance import iso, now_iso, utcnow
@@ -68,12 +69,18 @@ def new_signal_id() -> str:
 
 class SignalEngine:
     def __init__(
-        self, db: Database, cfg: Config, market: BinanceMarketData, provider: ModelProvider
+        self,
+        db: Database,
+        cfg: Config,
+        market: BinanceMarketData,
+        provider: ModelProvider,
+        agentos: AgentOSProvider | None = None,
     ) -> None:
         self.db = db
         self.cfg = cfg
         self.market = market
         self.provider = provider
+        self.agentos = agentos
 
     # -- generation ----------------------------------------------------------
     def generate(self, asset: str, horizon: str) -> dict[str, Any]:
@@ -104,6 +111,29 @@ class SignalEngine:
                 f"entry reference unusable: freshness={entry_field.freshness.value}",
             )
         entry_reference: Decimal = Decimal(str(entry_field.value))
+
+        # 1b. CORROBORATE -- ask the Binance Agent OS surface the same question.
+        # This runs before hashing so the verdict is sealed into snapshot_hash: a
+        # buyer can see which independent sources agreed at the moment of freeze.
+        snapshot.corroboration = corroborate(
+            symbol=asset,
+            rest_price=entry_reference,
+            provider=self.agentos if self.cfg.agentos_enabled else None,
+            tolerance_bps=self.cfg.agentos_tolerance_bps,
+        )
+        if (
+            self.cfg.agentos_require_agreement
+            and snapshot.corroboration["verdict"] == DISPUTED
+        ):
+            # Two independent witnesses disagree about the price. Publishing would
+            # mean sealing a contested fact into a signal and selling it.
+            self._record_rejection(
+                asset, horizon, RejectionCode.CORROBORATION_FAILED,
+                snapshot.corroboration["detail"], {"corroboration": snapshot.corroboration},
+            )
+            raise SignalRejected(
+                RejectionCode.CORROBORATION_FAILED, snapshot.corroboration["detail"]
+            )
 
         snapshot_dict = snapshot.to_dict()
         snapshot_hash = sha256_hex(snapshot_dict)

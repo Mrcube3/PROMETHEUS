@@ -48,6 +48,9 @@ class Snapshot:
     kline_interval: str
     host: str
     server_time_ms: int | None
+    # Independent second witness (Binance Agent OS). Sealed into snapshot_hash so
+    # a buyer can see which sources agreed at the moment of the freeze.
+    corroboration: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +61,7 @@ class Snapshot:
             "kline_count": len(self.klines),
             "source_host": self.host,
             "server_time": None if self.server_time_ms is None else self.server_time_ms,
+            "corroboration": self.corroboration,
             "fields": {name: f.to_dict() for name, f in sorted(self.fields.items())},
             # Klines are carried as the exact strings Binance returned so the
             # snapshot hash commits to the venue's own representation.
@@ -260,6 +264,7 @@ class BinanceMarketData:
             kline_interval=kline_interval,
             host=host,
             server_time_ms=server_time_ms,
+            corroboration=None,
         )
 
     def price_at_or_after(self, asset: str, target_ms: int) -> dict[str, Any] | None:

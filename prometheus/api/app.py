@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from ..config import get_config
 from ..db import get_db
+from ..market.agentos import AgentOSProvider
 from ..market.binance import BinanceMarketData
 from ..marketplace import Marketplace, PurchaseError
 from ..model.registry import all_provider_status, build_provider
@@ -40,7 +41,10 @@ def create_app() -> FastAPI:
     db = get_db()
     market = BinanceMarketData(cfg.binance_hosts, cfg.http_timeout_s)
     provider = build_provider(cfg)
-    engine = SignalEngine(db, cfg, market, provider)
+    agentos = AgentOSProvider(
+        cfg.agentos_binary, timeout_s=cfg.http_timeout_s * 2, api_env=cfg.agentos_api_env
+    )
+    engine = SignalEngine(db, cfg, market, provider, agentos=agentos)
     marketplace = Marketplace(db, cfg, engine)
     scheduler = Scheduler(db, cfg, engine, market)
 
@@ -58,6 +62,7 @@ def create_app() -> FastAPI:
     app.state.cfg = cfg
     app.state.db = db
     app.state.market = market
+    app.state.agentos = agentos
     app.state.engine = engine
     app.state.marketplace = marketplace
     app.state.scheduler = scheduler
@@ -119,6 +124,9 @@ def create_app() -> FastAPI:
                 "note": "no API key is held; no authenticated Binance capability exists in this build",
             },
             "model_providers": all_provider_status(cfg),
+            "binance_agent_os": agentos.status(
+                probe_symbol=cfg.assets[0] if cfg.assets else None
+            ),
             "settlement": marketplace.verifier.describe(),
             "x402": {
                 "version": cfg.x402_version,
@@ -131,13 +139,6 @@ def create_app() -> FastAPI:
                 "note": (
                     "wire protocol implemented from the official x402 v1 specification; "
                     "see DISCOVERY.md section 3"
-                ),
-            },
-            "binance_agent_os": {
-                "status": Status.UNAVAILABLE.value,
-                "note": (
-                    "no Agent OS MCP server is mounted in this runtime and no credential is "
-                    "present; no tool signatures are claimed"
                 ),
             },
         }
