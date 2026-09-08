@@ -102,6 +102,54 @@ python verify_security.py --base-url http://127.0.0.1:8402
 
 ---
 
+## Current demo deployment
+
+The working public demo runs on the Prometheus VPS service, separately from Apex:
+
+- Dashboard: <http://38.49.209.149:8402>
+- Health: <http://38.49.209.149:8402/health>
+- OpenAPI: <http://38.49.209.149:8402/docs>
+- Apex remains on <http://38.49.209.149:4174>
+
+Prometheus runs as the `prometheus-agent` PM2 process on port `8402`; Apex is not
+restarted or modified by the Prometheus deployment. The current public endpoint is
+HTTP-only and intended for demonstrations. Settlement is explicitly labelled
+`SIMULATION` until a real on-chain or facilitator verifier is configured.
+
+Vercel is not the primary runtime for this application. Its serverless functions can
+serve a request, but they do not provide the persistent SQLite process and continuous
+autopilot scheduler that PROMETHEUS needs. The repository includes a Vercel entrypoint
+for experimentation; use the VPS endpoint for the complete live dashboard and
+autopilot loop.
+
+---
+
+## Demo video flow
+
+For a concise two-minute demonstration, record the public dashboard in this order:
+
+1. **Observe:** show the Binance live status, current assets, signal counts and
+   pipeline.
+2. **Freeze:** open one signal and show its direction, confidence, horizon, evidence
+   and SHA-256 commitment.
+3. **Corroborate:** open `/provider-status` and explain that Binance Agent OS is a
+   separate, read-only witness when available. `AGREED` publishes; `DISPUTED` refuses
+   the signal; `UNAVAILABLE` is recorded as a single-witness snapshot.
+4. **Sell:** show a public listing with protected intelligence hidden, then request
+   purchase and show the HTTP `402 Payment Required` challenge.
+5. **Deliver:** show the verified payment response and the protected artifact. In a
+   simulation, call it a demo authorization; do not describe it as funds moving.
+6. **Prove:** show the buyer's claimed hash and independently recomputed hash matching.
+7. **Score:** show resolved outcomes, accuracy, revenue and the append-only track
+   record, including losses.
+
+Suggested closing line:
+
+> PROMETHEUS turns market intelligence into accountable machine-to-machine commerce:
+> predict, sell, prove, repeat.
+
+---
+
 ## The loop
 
 ```
