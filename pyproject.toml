@@ -1,0 +1,2 @@
+[tool.vercel]
+entrypoint = "prometheus.api.app:app"
