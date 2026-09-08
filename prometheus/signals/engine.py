@@ -49,6 +49,10 @@ PUBLIC_PREVIEW_KEYS = (
     "price", "currency", "pricing_version", "pricing_classification",
     "snapshot_hash", "quant_hash", "signal_hash", "environment",
     "freshness", "evidence_key_count", "claim_count",
+    # Corroboration describes the quality of the observation, not the prediction
+    # made from it, so it is safe to publish and useful to a buyer deciding
+    # whether the snapshot behind a signal had one witness or two.
+    "corroboration_verdict", "corroboration_deviation_bps", "witnesses",
 )
 
 
@@ -350,6 +354,9 @@ def public_preview(row: dict[str, Any]) -> dict[str, Any]:
     if isinstance(lp, dict):
         freshness = lp.get("freshness", "UNKNOWN")
 
+    cor = snapshot.get("corroboration") or {}
+    verdict = cor.get("verdict", "UNAVAILABLE")
+
     full = {
         "signal_id": row["signal_id"],
         "asset": row["asset"],
@@ -375,6 +382,9 @@ def public_preview(row: dict[str, Any]) -> dict[str, Any]:
         "freshness": freshness,
         "evidence_key_count": len(frozen.get("evidence_keys", [])),
         "claim_count": len(frozen.get("claims", [])),
+        "corroboration_verdict": verdict,
+        "corroboration_deviation_bps": cor.get("deviation_bps"),
+        "witnesses": 2 if verdict == "AGREED" else 1,
     }
     return {k: full[k] for k in PUBLIC_PREVIEW_KEYS if k in full}
 

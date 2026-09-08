@@ -6,255 +6,655 @@
 <title>PROMETHEUS — Autonomous Signal Economy</title>
 <style>
   :root{
-    --bg:#0a0c10; --panel:#12151c; --panel2:#171b24; --line:#242a36;
-    --ink:#e6e9ef; --dim:#8b95a7; --faint:#5d6779;
-    --long:#2ecc71; --short:#ff5c5c; --warn:#f5a524; --acc:#5b8cff; --sim:#a855f7;
+    --bg:#080a0e; --panel:#11141b; --panel2:#161a23; --line:#232936; --line2:#2e3646;
+    --ink:#e8ebf1; --dim:#8892a4; --faint:#5a6475;
+    --long:#2ecc71; --short:#ff5f5f; --warn:#f5a524; --acc:#5b8cff; --sim:#a855f7;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --r:10px;
   }
   *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  a{color:var(--acc)}
-  header{padding:22px 26px;border-bottom:1px solid var(--line);
-         display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
-  h1{margin:0;font-size:19px;letter-spacing:.16em;font-weight:600}
-  .tag{color:var(--dim);font-size:12px;letter-spacing:.05em}
-  .wrap{padding:22px 26px;max-width:1500px}
+       font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       -webkit-font-smoothing:antialiased}
+  a{color:var(--acc);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header{position:sticky;top:0;z-index:50;background:rgba(8,10,14,.93);
+         backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+         padding:14px 26px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:14px}
+  h1{margin:0;font-size:17px;letter-spacing:.18em;font-weight:600}
+  .tagline{color:var(--faint);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .hstat{margin-left:auto;display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+         font-size:11.5px;color:var(--dim);font-family:var(--mono)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;
+       vertical-align:middle}
+  .live{background:var(--long);box-shadow:0 0 0 3px rgba(46,204,113,.15)}
+  .off{background:var(--short);box-shadow:0 0 0 3px rgba(255,95,95,.15)}
+  .amber{background:var(--warn);box-shadow:0 0 0 3px rgba(245,165,36,.15)}
+
+  .thesis{padding:26px 26px 0;max-width:1560px}
+  .thesis blockquote{margin:0;padding:0 0 0 16px;border-left:2px solid var(--acc);
+                     color:var(--dim);font-size:14.5px;line-height:1.65;max-width:900px}
+  .thesis blockquote b{color:var(--ink);font-weight:600}
+
+  .banner{margin:18px 26px 0;padding:12px 16px;border-radius:var(--r);font-size:12.5px;
+          line-height:1.6;max-width:1560px}
+  .banner.simu{background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.28);color:#dcbcfb}
+  .banner.realm{background:rgba(46,204,113,.07);border:1px solid rgba(46,204,113,.26);color:#a8e6c1}
+  .banner b{color:#fff}
+  .banner code, footer code{font-family:var(--mono);font-size:11.5px;
+          background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px}
+
+  .wrap{padding:20px 26px 40px;max-width:1560px}
   .grid{display:grid;gap:14px}
-  .g4{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
-  .g2{grid-template-columns:repeat(auto-fit,minmax(430px,1fr))}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px 17px}
-  .card h2{margin:0 0 12px;font-size:11px;letter-spacing:.14em;color:var(--dim);
-           text-transform:uppercase;font-weight:600}
-  .big{font-size:27px;font-weight:600;font-family:var(--mono)}
-  .sub{color:var(--faint);font-size:11.5px;margin-top:5px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+  .card h2{margin:0 0 14px;font-size:10.5px;letter-spacing:.15em;color:var(--dim);
+           text-transform:uppercase;font-weight:600;display:flex;align-items:center;
+           justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .card h2 .hint{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400;
+                 font-size:11px}
+  .sectitle{margin:26px 0 12px;font-size:11px;letter-spacing:.16em;color:var(--faint);
+            text-transform:uppercase;font-weight:600}
+
+  .kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+  .kpi .k{font-size:10px;letter-spacing:.13em;color:var(--faint);text-transform:uppercase;
+          font-weight:600}
+  .kpi .v{font-size:26px;font-weight:600;font-family:var(--mono);margin-top:7px;line-height:1.1}
+  .kpi .s{color:var(--faint);font-size:11px;margin-top:6px;line-height:1.45}
+
+  .pipe{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .stage{flex:1 1 0;min-width:96px;background:var(--panel2);border:1px solid var(--line);
+         border-radius:8px;padding:11px 12px}
+  .stage.refuse{border-color:rgba(255,95,95,.3);background:rgba(255,95,95,.05)}
+  .stage .sn{font-size:20px;font-weight:600;font-family:var(--mono)}
+  .stage .sl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;
+             margin-top:3px}
+  .stage.refuse .sn{color:var(--short)}
+
+  .scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th{text-align:left;color:var(--faint);font-weight:500;font-size:10.5px;
-     letter-spacing:.1em;text-transform:uppercase;padding:7px 9px;border-bottom:1px solid var(--line)}
-  td{padding:8px 9px;border-bottom:1px solid #1b1f28;vertical-align:top}
-  tr:last-child td{border-bottom:none}
+  th{text-align:left;color:var(--faint);font-weight:600;font-size:10px;
+     letter-spacing:.11em;text-transform:uppercase;padding:8px 10px;
+     border-bottom:1px solid var(--line2);white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid #1a1e27;vertical-align:middle;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr.clickable{cursor:pointer}
+  tbody tr.clickable:hover{background:rgba(91,140,255,.06)}
   .mono{font-family:var(--mono);font-size:11.5px}
-  .pill{display:inline-block;padding:2px 7px;border-radius:11px;font-size:10px;
-        font-weight:600;letter-spacing:.04em;border:1px solid transparent;
-        white-space:nowrap}
-  .LONG{color:var(--long);background:rgba(46,204,113,.11);border-color:rgba(46,204,113,.3)}
-  .SHORT{color:var(--short);background:rgba(255,92,92,.11);border-color:rgba(255,92,92,.3)}
-  .NEUTRAL,.STAND_DOWN{color:var(--dim);background:rgba(139,149,167,.1);border-color:rgba(139,149,167,.28)}
-  .ok{color:var(--long);background:rgba(46,204,113,.11);border-color:rgba(46,204,113,.3)}
-  .bad{color:var(--short);background:rgba(255,92,92,.11);border-color:rgba(255,92,92,.3)}
-  .mid{color:var(--warn);background:rgba(245,165,36,.11);border-color:rgba(245,165,36,.3)}
-  .sim{color:var(--sim);background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.32)}
-  .banner{margin:0 26px 18px;padding:11px 15px;border-radius:8px;font-size:12.5px;
-          background:rgba(168,85,247,.09);border:1px solid rgba(168,85,247,.3);color:#d8b4fe}
-  .banner b{color:#efe0ff}
-  .muted{color:var(--dim)}
-  .kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;
-      border-bottom:1px solid #1b1f28;font-size:12.5px}
+  .num{font-family:var(--mono);font-size:11.5px;text-align:right}
+  .empty{color:var(--dim);padding:18px 10px;font-size:12.5px;white-space:normal}
+
+  .pill{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9.5px;
+        font-weight:700;letter-spacing:.06em;border:1px solid transparent;white-space:nowrap;
+        font-family:var(--mono)}
+  .LONG,.ok,.AGREED,.CORRECT{color:var(--long);background:rgba(46,204,113,.11);
+        border-color:rgba(46,204,113,.32)}
+  .SHORT,.bad,.DISPUTED,.INCORRECT{color:var(--short);background:rgba(255,95,95,.11);
+        border-color:rgba(255,95,95,.32)}
+  .NEUTRAL,.STAND_DOWN,.mid,.UNAVAILABLE,.FLAT{color:var(--warn);background:rgba(245,165,36,.1);
+        border-color:rgba(245,165,36,.3)}
+  .sim{color:var(--sim);background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.34)}
+  .neu,.NOT_SCORED{color:var(--dim);background:rgba(136,146,164,.1);
+        border-color:rgba(136,146,164,.26)}
+
+  .kv{display:flex;justify-content:space-between;gap:14px;padding:7px 0;
+      border-bottom:1px solid #1a1e27;font-size:12.5px;align-items:center}
   .kv:last-child{border-bottom:none}
-  .kv span:first-child{color:var(--faint);min-width:0;flex:1 1 auto}
-  .kv span:last-child{font-family:var(--mono);font-size:11.5px;text-align:right;
-                      word-break:break-all;flex:0 1 auto;min-width:0}
-  .kv span:last-child .pill{word-break:normal}
-  .scroll{overflow-x:auto}
-  footer{padding:18px 26px;color:var(--faint);font-size:11.5px;border-top:1px solid var(--line);margin-top:26px}
-  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
-  .live{background:var(--long)} .off{background:var(--short)} .amber{background:var(--warn)}
+  .kv .kk{color:var(--faint);flex:1 1 auto;min-width:0}
+  .kv .vv{font-family:var(--mono);font-size:11.5px;text-align:right;
+          word-break:break-all;flex:0 1 auto;min-width:0}
+  .caveat{background:rgba(245,165,36,.07);border:1px solid rgba(245,165,36,.3);
+          border-radius:8px;padding:11px 13px;margin-bottom:12px;font-size:12px;
+          line-height:1.6;color:#f0d6a0}
+  .caveat .ct{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;font-weight:700;
+              color:var(--warn);display:block;margin-bottom:4px}
+  .mixbar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#1c2230;margin-top:4px}
+  .mixbar i{display:block;height:100%}
+  .note{color:var(--faint);font-size:11.5px;line-height:1.6;margin-top:12px}
+  .note b{color:var(--dim)}
+
+  .wit{display:flex;gap:12px;align-items:stretch;margin-bottom:14px}
+  .src{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+       padding:11px 13px;min-width:0}
+  .src .sname{font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);
+              font-weight:600}
+  .src .sval{font-family:var(--mono);font-size:15px;margin-top:5px;word-break:break-all}
+  .src .smeta{font-size:10.5px;color:var(--faint);margin-top:5px;font-family:var(--mono);
+              word-break:break-all}
+  .vs{display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:0 2px;min-width:80px}
+  .vs .dev{font-family:var(--mono);font-size:13px;font-weight:600}
+  .vs .devl{font-size:9px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;
+            margin-top:2px}
+
+  .bar{height:6px;border-radius:3px;background:#1c2230;overflow:hidden;display:flex}
+  .bar i{display:block;height:100%}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--dim)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .sw{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
+
+  .calrow{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:11.5px}
+  .calrow .cb{width:66px;font-family:var(--mono);color:var(--dim);flex:none}
+  .caltrack{flex:1;height:18px;background:#151a24;border-radius:4px;position:relative;
+            border:1px solid var(--line);overflow:hidden}
+  .caltrack i{position:absolute;left:0;border-radius:2px}
+  .caltrack .stated{top:2px;height:6px;background:rgba(91,140,255,.45)}
+  .caltrack .obs{bottom:2px;height:6px;background:rgba(46,204,113,.6)}
+  .calrow .cn{width:52px;text-align:right;font-family:var(--mono);color:var(--faint);
+              font-size:10.5px;flex:none}
+
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:90;opacity:0;
+         pointer-events:none;transition:opacity .16s}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(660px,100%);background:var(--panel);
+          border-left:1px solid var(--line2);z-index:100;transform:translateX(100%);
+          transition:transform .2s cubic-bezier(.4,0,.2,1);overflow-y:auto;
+          box-shadow:-20px 0 50px rgba(0,0,0,.4)}
+  .drawer.open{transform:translateX(0)}
+  .dhead{position:sticky;top:0;background:var(--panel);border-bottom:1px solid var(--line);
+         padding:16px 20px;display:flex;align-items:flex-start;gap:12px;z-index:2}
+  .dhead h3{margin:0;font-size:13.5px;font-family:var(--mono);word-break:break-all}
+  .dhead .sub{color:var(--faint);font-size:11.5px;margin-top:4px}
+  .x{margin-left:auto;background:none;border:1px solid var(--line2);color:var(--dim);
+     width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:15px;line-height:1;flex:none}
+  .x:hover{color:var(--ink);border-color:var(--dim)}
+  .dbody{padding:18px 20px 40px}
+  .dsec{margin:22px 0 10px;font-size:10.5px;letter-spacing:.15em;color:var(--dim);
+        text-transform:uppercase;font-weight:600}
+  .dsec:first-child{margin-top:0}
+  .dsec .sn2{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400}
+  .locked{background:rgba(245,165,36,.06);border:1px solid rgba(245,165,36,.24);
+          border-radius:8px;padding:13px 15px;font-size:12.5px;color:#f3d9a4;line-height:1.6}
+  .hashrow{font-family:var(--mono);font-size:10.5px;word-break:break-all;color:var(--dim);
+           background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+           padding:9px 11px;margin-top:6px}
+  .hlabel{font-size:11px;color:var(--faint);margin-top:10px}
+  .claim{background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+         padding:11px 13px;margin-bottom:8px;font-size:12.5px;line-height:1.55}
+  .claim .ev{margin-top:8px;display:flex;gap:5px;flex-wrap:wrap}
+  .ev code{font-family:var(--mono);font-size:10px;background:rgba(91,140,255,.12);
+           border:1px solid rgba(91,140,255,.26);color:#9cbaff;padding:1.5px 6px;border-radius:4px}
+  .thesisbox{margin:12px 0 4px;font-size:12.5px;line-height:1.65;color:var(--ink)}
+
+  footer{padding:20px 26px 34px;color:var(--faint);font-size:11.5px;line-height:1.7;
+         border-top:1px solid var(--line);max-width:1560px}
+  @media (max-width:640px){
+    header,.wrap,.thesis,footer{padding-left:14px;padding-right:14px}
+    .banner{margin-left:14px;margin-right:14px}
+    .wit{flex-direction:column}
+    .vs{min-height:44px}
+  }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>PROMETHEUS</h1>
-  <span class="tag">PREDICT &middot; SELL &middot; PROVE &middot; REPEAT</span>
-  <span class="tag" id="envline"></span>
+  <div class="brand">
+    <h1>PROMETHEUS</h1>
+    <span class="tagline">Predict &middot; Sell &middot; Prove &middot; Repeat</span>
+  </div>
+  <div class="hstat" id="hstat"></div>
 </header>
 
-<div class="banner" id="banner">Loading environment&hellip;</div>
+<div class="thesis">
+  <blockquote>
+    Every prediction below was <b>cryptographically frozen before the market moved</b>.
+    The hash is handed to the buyer in the payment invoice, before payment. Nothing here
+    is a backtest and no figure is seeded &mdash; each one is computed from outcomes that
+    actually resolved against Binance.
+  </blockquote>
+</div>
+
+<div class="banner simu" id="banner">Loading&hellip;</div>
 
 <div class="wrap">
-  <div class="grid g4" id="kpis"></div>
 
-  <div class="grid g2" style="margin-top:18px">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="sectitle">Lifecycle</div>
+  <div class="card">
+    <h2>Observe &rarr; Score
+      <span class="hint">refusals are a product outcome, not an error bucket</span></h2>
+    <div class="pipe" id="pipe"></div>
+  </div>
+
+  <div class="sectitle">Evidence quality</div>
+  <div class="grid g2">
     <div class="card">
-      <h2>Provider status &mdash; verified, not assumed</h2>
+      <h2>Dual-witness corroboration
+        <span class="hint">Binance REST vs Agent OS CLI</span></h2>
+      <div id="witness"></div>
+    </div>
+    <div class="card">
+      <h2>Integrations <span class="hint">verified, not assumed</span></h2>
       <div id="providers"></div>
     </div>
-    <div class="card">
-      <h2>Settlement</h2>
-      <div id="settlement"></div>
+  </div>
+
+  <div class="sectitle">Marketplace</div>
+  <div class="card">
+    <h2>Listed intelligence <span class="hint">click any row for its passport</span></h2>
+    <div class="scroll"><table id="mkt">
+      <thead><tr>
+        <th>Signal</th><th>Asset</th><th>Horizon</th><th class="num">Price</th>
+        <th>Matures</th><th>State</th><th>Witness</th><th>Pricing</th><th>Signal hash</th>
+      </tr></thead><tbody></tbody></table></div>
+    <div class="note">
+      Direction, confidence, thesis, evidence and invalidation are <b>absent from this
+      table by construction</b> &mdash; the preview is built from an allowlist, so a new
+      field cannot leak into it by accident. They are released only after verified settlement.
     </div>
   </div>
 
-  <div class="card" style="margin-top:18px">
-    <h2>Marketplace &mdash; protected intelligence, priced</h2>
-    <div class="scroll"><table id="mkt">
-      <thead><tr><th>Signal</th><th>Asset</th><th>Horizon</th><th>Price</th>
-      <th>Matures</th><th>State</th><th>Pricing</th><th>Signal hash</th></tr></thead>
-      <tbody></tbody></table></div>
-    <div class="sub">Direction, confidence, thesis, evidence and invalidation are absent from this
-      table by construction &mdash; they are released only after verified settlement.</div>
-  </div>
-
-  <div class="card" style="margin-top:18px">
-    <h2>Resolved track record &mdash; predictions vs reality</h2>
-    <div class="scroll"><table id="outcomes">
-      <thead><tr><th>Signal</th><th>Asset</th><th>Dir</th><th>Conf</th>
-      <th>Entry</th><th>Exit</th><th>Return</th><th>Result</th></tr></thead>
-      <tbody></tbody></table></div>
-  </div>
-
-  <div class="grid g2" style="margin-top:18px">
+  <div class="sectitle">Track record</div>
+  <div class="grid g2">
     <div class="card">
-      <h2>Reputation &mdash; sample size always shown</h2>
+      <h2>Resolved outcomes <span class="hint">wins and losses, unfiltered</span></h2>
+      <div class="scroll"><table id="outcomes">
+        <thead><tr>
+          <th>Signal</th><th>Asset</th><th>Dir</th><th class="num">Conf</th>
+          <th class="num">Entry</th><th class="num">Exit</th><th class="num">Return</th><th>Result</th>
+        </tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Reputation <span class="hint">sample size always shown</span></h2>
       <div id="rep"></div>
     </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:14px">
     <div class="card">
-      <h2>Rejected drafts &mdash; what was refused</h2>
+      <h2>Calibration <span class="hint">stated confidence vs observed accuracy</span></h2>
+      <div id="cal"></div>
+    </div>
+    <div class="card">
+      <h2>Refused drafts <span class="hint">what the agent declined to sell</span></h2>
       <div class="scroll"><table id="rej">
         <thead><tr><th>When</th><th>Asset</th><th>Reason</th><th>Detail</th></tr></thead>
         <tbody></tbody></table></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:18px">
-    <h2>Journal &mdash; append-only</h2>
+  <div class="sectitle">Audit</div>
+  <div class="card">
+    <h2>Journal <span class="hint">append-only; the database rejects UPDATE and DELETE</span></h2>
     <div class="scroll"><table id="jrnl">
-      <thead><tr><th>Seq</th><th>When</th><th>Event</th><th>Signal</th><th>Detail</th></tr></thead>
+      <thead><tr><th>#</th><th>Time</th><th>Event</th><th>Signal</th><th>Detail</th></tr></thead>
       <tbody></tbody></table></div>
   </div>
 </div>
 
 <footer>
-  Market data: Binance public spot endpoints (read-only; no API key, no account, no order or
-  withdrawal capability). Payments: x402 v1. Every figure on this page is computed from resolved
-  outcomes &mdash; none is seeded, backfilled or simulated except where explicitly labelled.
+  Market data: Binance public spot endpoints, read-only &mdash; no API key, no account,
+  no order or withdrawal capability exists in this build. Corroboration: official
+  <code>binance-cli</code> via Binance Skills Hub, unauthenticated. Payments: x402 v1.<br>
   <a href="/docs">OpenAPI</a> &middot; <a href="/provider-status">provider status</a> &middot;
-  <a href="/api/reputation">reputation JSON</a>
+  <a href="/api/reputation">reputation</a> &middot; <a href="/api/pipeline">pipeline</a> &middot;
+  <a href="/api/journal">journal</a>
 </footer>
 
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dhead">
+    <div>
+      <h3 id="dtitle">&mdash;</h3>
+      <div class="sub" id="dsub"></div>
+    </div>
+    <button class="x" onclick="closeDrawer()" aria-label="Close">&times;</button>
+  </div>
+  <div class="dbody" id="dbody"></div>
+</aside>
+
 <script>
-const j = (u) => fetch(u).then(r => r.json()).catch(() => null);
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const shortHash = (h) => h ? esc(String(h).replace('sha256:', '').slice(0, 14)) : '&mdash;';
-const t = (s) => s ? esc(String(s).slice(11, 19)) : '&mdash;';
+'use strict';
+const j = (u) => fetch(u).then(r => r.ok ? r.json() : null).catch(() => null);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hh = (h) => h ? esc(String(h).replace('sha256:','').slice(0,14)) : '&mdash;';
+const tt = (s) => s ? esc(String(s).slice(11,19)) : '&mdash;';
+const fx = (v,d=3) => (v === null || v === undefined || v === '') ? '&mdash;'
+  : esc(Number(v).toFixed(d));
 
-function statusPill(s) {
-  const good = ['VERIFIED_LIVE', 'VERIFIED_LOCAL', 'VERIFIED_TESTNET'];
-  const warn = ['ADAPTER_ONLY', 'UNVERIFIED', 'PENDING'];
-  const cls = s === 'SIMULATION' ? 'sim' : good.includes(s) ? 'ok' : warn.includes(s) ? 'mid' : 'bad';
-  return `<span class="pill ${cls}">${esc(s)}</span>`;
+const GOOD = ['VERIFIED_LIVE','VERIFIED_LOCAL','VERIFIED_TESTNET'];
+const WARN = ['ADAPTER_ONLY','UNVERIFIED','PENDING','UNAVAILABLE'];
+function pill(s){
+  const c = s === 'SIMULATION' ? 'sim'
+    : GOOD.includes(s) ? 'ok' : WARN.includes(s) ? 'mid' : 'bad';
+  return `<span class="pill ${c}">${esc(s)}</span>`;
 }
+const retColor = (r) => r > 0 ? 'var(--long)' : r < 0 ? 'var(--short)' : 'var(--dim)';
 
-async function tick() {
-  const [h, ps, mkt, rep, rej, jr] = await Promise.all([
-    j('/health'), j('/provider-status'), j('/api/marketplace/signals?limit=25'),
-    j('/api/reputation'), j('/api/rejections?limit=12'), j('/api/journal?limit=22')
-  ]);
-  if (!h) return;
+let LISTINGS = [];
 
-  document.getElementById('envline').innerHTML =
-    `<span class="dot ${h.market_data.status === 'VERIFIED_LIVE' ? 'live' : 'off'}"></span>` +
-    `Binance ${esc(h.market_data.status)} &middot; ${h.market_data.latency_ms}ms &middot; env ${esc(h.environment)}`;
+function closeDrawer(){
+  const d = document.getElementById('drawer');
+  d.classList.remove('open');
+  d.setAttribute('aria-hidden','true');
+  document.getElementById('scrim').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
-  const s = ps && ps.settlement || {};
-  document.getElementById('banner').innerHTML = s.status === 'SIMULATION'
-    ? `<b>SIMULATION settlement.</b> The <code>signature_only</code> verifier performs real
-       EIP-712/EIP-3009 signature recovery and binds each payment to its invoice, but
-       <b>no funds move on any chain</b>. This is not testnet settlement and not live settlement.
-       Set <code>PROM_SETTLEMENT_VERIFIER=onchain</code> with a funded receive address for real settlement.`
-    : `<b>Settlement verifier:</b> ${esc(s.verifier)} ${statusPill(s.status)} &mdash; environment
-       <b>${esc(s.environment)}</b>. ${esc(s.proves || '')}`;
+async function openSignal(id){
+  const d = document.getElementById('drawer');
+  d.classList.add('open');
+  d.setAttribute('aria-hidden','false');
+  document.getElementById('scrim').classList.add('open');
+  document.getElementById('dtitle').textContent = id;
+  document.getElementById('dsub').textContent = 'loading…';
+  document.getElementById('dbody').innerHTML = '';
 
-  const c = h.counts;
-  const e = rep && rep.economics || {};
-  document.getElementById('kpis').innerHTML = [
-    ['Signals published', c.signals, `${c.listed} listed now`],
-    ['Drafts rejected', c.rejections, 'unsupported evidence or incoherent'],
-    ['Verified payments', c.paid, `${c.deliveries} artifact(s) delivered`],
-    ['Outcomes resolved', c.outcomes, rep && rep.sample_sufficient
-      ? `accuracy ${esc(rep.directional_accuracy_display)}`
-      : `accuracy: INSUFFICIENT_SAMPLE (n=${rep ? rep.scored_signals : 0})`],
-    ['Gross revenue', `${esc(e.gross_revenue || '0')} ${esc(e.currency || '')}`,
-      `${e.unique_buyers || 0} buyer(s), ${e.repeat_buyers || 0} repeat`],
-    ['Stood down', rep ? rep.stood_down : 0, 'declined rather than sell noise'],
-  ].map(([k, v, sub]) => `<div class="card"><h2>${k}</h2><div class="big">${esc(v)}</div>
-      <div class="sub">${sub}</div></div>`).join('');
+  const pv = LISTINGS.find(s => s.signal_id === id)
+          || await j(`/api/marketplace/signals/${id}/preview`);
+  const passport = await j(`/api/signals/${id}/passport`);   // 402 until matured -> null
 
-  if (ps) {
-    const md = ps.market_data;
-    document.getElementById('providers').innerHTML =
-      `<div class="kv"><span>Binance spot (read-only)</span><span>${statusPill(md.status)}</span></div>` +
-      ps.model_providers.map(p => `<div class="kv"><span>${esc(p.provider)}${p.active ? ' &middot; ACTIVE' : ''}
-        ${p.is_llm ? '' : ' <span class="muted">(rule engine, not an LLM)</span>'}</span>
-        <span>${statusPill(p.status)}</span></div>`).join('') +
-      `<div class="kv"><span>Binance Agent OS MCP</span><span>${statusPill(ps.binance_agent_os.status)}</span></div>` +
-      `<div class="kv"><span>x402 wire protocol v${ps.x402.version}</span><span>${statusPill(ps.x402.status)}</span></div>` +
-      `<div class="sub" style="margin-top:9px">${esc(ps.binance_agent_os.note)}</div>`;
+  document.getElementById('dsub').innerHTML = pv
+    ? `${esc(pv.asset)} &middot; ${esc(pv.horizon)} &middot; ${esc(pv.state)} &middot; ${esc(pv.price)} ${esc(pv.currency)}`
+    : '';
 
-    document.getElementById('settlement').innerHTML = Object.entries({
-      verifier: s.verifier, status: s.status, environment: s.environment,
-      network: ps.x402.network, chain_id: ps.x402.chain_id,
-      asset: ps.x402.asset, pay_to: ps.x402.pay_to,
-    }).map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><span>${k === 'status' ? statusPill(v) : esc(v)}</span></div>`).join('')
-      + `<div class="sub" style="margin-top:9px"><b>Proves:</b> ${esc(s.proves || '&mdash;')}</div>`
-      + (s.does_not_prove ? `<div class="sub"><b>Does not prove:</b> ${esc(s.does_not_prove)}</div>` : '');
+  let html = '<div class="dsec">Cryptographic freeze</div>';
+  for (const [k,v] of [['signal_hash', pv && pv.signal_hash],
+                       ['snapshot_hash', pv && pv.snapshot_hash],
+                       ['quant_hash', pv && pv.quant_hash]]) {
+    html += `<div class="hlabel">${k}</div><div class="hashrow">${esc(v || '—')}</div>`;
+  }
+  html += `<div class="note">SHA-256 over canonical JSON &mdash; sorted keys, no whitespace,
+    UTF-8, floats rejected. Computed <b>before listing</b>, so it is fixed before anyone
+    knew the price, let alone the outcome.</div>`;
+
+  if (pv) {
+    html += `<div class="dsec">Observation</div>
+      <div class="kv"><span class="kk">corroboration</span><span class="vv">
+        <span class="pill ${esc(pv.corroboration_verdict)}">${esc(pv.corroboration_verdict)}</span></span></div>
+      <div class="kv"><span class="kk">deviation between sources</span><span class="vv">${
+        pv.corroboration_deviation_bps ? esc(pv.corroboration_deviation_bps)+' bps' : '—'}</span></div>
+      <div class="kv"><span class="kk">independent witnesses</span>
+        <span class="vv">${esc(pv.witnesses)}</span></div>
+      <div class="kv"><span class="kk">freshness</span><span class="vv">${esc(pv.freshness)}</span></div>
+      <div class="kv"><span class="kk">evidence keys cited</span>
+        <span class="vv">${esc(pv.evidence_key_count)}</span></div>
+      <div class="kv"><span class="kk">claims made</span>
+        <span class="vv">${esc(pv.claim_count)}</span></div>
+      <div class="kv"><span class="kk">model</span>
+        <span class="vv">${esc(pv.model_provider)} / ${esc(pv.model_version)}</span></div>`;
   }
 
-  document.querySelector('#mkt tbody').innerHTML = (mkt && mkt.signals.length)
-    ? mkt.signals.map(x => `<tr>
-        <td class="mono">${esc(x.signal_id.slice(0, 14))}</td><td>${esc(x.asset)}</td>
-        <td>${esc(x.horizon)}</td><td class="mono">${esc(x.price)} ${esc(x.currency)}</td>
-        <td class="mono">${t(x.matures_at)}</td><td><span class="pill mid">${esc(x.state)}</span></td>
-        <td class="mono" style="font-size:10px">${esc(x.pricing_classification || '')}</td>
-        <td class="mono">${shortHash(x.signal_hash)}</td></tr>`).join('')
-    : '<tr><td colspan="8" class="muted">No signals currently listed.</td></tr>';
+  if (!passport) {
+    html += `<div class="dsec">Protected intelligence</div>
+      <div class="locked"><b>Locked.</b> Direction, confidence, thesis, evidence and
+      invalidation are released only after verified x402 settlement &mdash; or publicly once
+      the horizon expires, which is what makes the track record auditable.
+      <div class="hashrow" style="margin-top:10px">python buyer_agent.py --signal-id ${esc(id)}</div>
+      </div>`;
+  } else {
+    const p = passport.prediction, o = passport.outcome;
+    html += `<div class="dsec">Prediction <span class="sn2">(public &mdash; horizon expired)</span></div>
+      <div class="kv"><span class="kk">direction</span><span class="vv">
+        <span class="pill ${esc(p.direction)}">${esc(p.direction)}</span></span></div>
+      <div class="kv"><span class="kk">confidence</span><span class="vv">${esc(p.confidence)}</span></div>
+      <div class="kv"><span class="kk">entry reference</span>
+        <span class="vv">${esc(p.entry_reference)}</span></div>
+      <div class="kv"><span class="kk">invalidation</span>
+        <span class="vv">${esc(p.invalidation.reference_price)}</span></div>
+      <div class="thesisbox">${esc(p.thesis)}</div>
+      <div class="dsec">Claims and their evidence</div>`;
+    for (const c of p.claims) {
+      html += `<div class="claim">${esc(c.statement)}
+        <div class="ev">${c.evidence_keys.map(k => `<code>${esc(k)}</code>`).join('')}</div></div>`;
+    }
+    html += `<div class="note">Every key above was verified to exist <b>and to have been
+      computed</b> from this snapshot before the signal was allowed to exist. A cited key
+      the quant engine never produced causes outright rejection.</div>`;
 
-  const oc = await j('/api/outcomes?limit=14');
+    if (o) {
+      const r = parseFloat(o.raw_return);
+      html += `<div class="dsec">What actually happened</div>
+        <div class="kv"><span class="kk">result</span><span class="vv">
+          <span class="pill ${esc(o.directional)}">${esc(o.directional)}</span></span></div>
+        <div class="kv"><span class="kk">exit price</span><span class="vv">${esc(o.exit_price)}</span></div>
+        <div class="kv"><span class="kk">return</span>
+          <span class="vv" style="color:${retColor(r)}">${(r*100).toFixed(4)}%</span></div>
+        <div class="kv"><span class="kk">resolution rule</span>
+          <span class="vv">${esc((o.provenance && o.provenance.rule) || '')}</span></div>
+        <div class="note">The rule was fixed <b>before any signal existed</b> and never
+          inspects highs or lows, so there is nothing to cherry-pick after the fact.</div>`;
+    }
+  }
+  document.getElementById('dbody').innerHTML = html;
+}
+
+/* `/provider-status` runs a live binance-cli probe and can take seconds, so it is
+   never allowed to block first paint. Everything fast renders immediately; the
+   probe fills in when it lands, and its last good value is reused meanwhile. */
+let PS = null;
+let psInFlight = false;
+function refreshProviderStatus(){
+  if (psInFlight) return;
+  psInFlight = true;
+  j('/provider-status').then(v => { if (v) { PS = v; renderSlow(); } })
+                       .finally(() => { psInFlight = false; });
+}
+
+async function tick(){
+  const [h, mkt, rep, rej, jr, pipe, oc] = await Promise.all([
+    j('/health'), j('/api/marketplace/signals?limit=25'),
+    j('/api/reputation'), j('/api/rejections?limit=10'), j('/api/journal?limit=20'),
+    j('/api/pipeline'), j('/api/outcomes?limit=14')
+  ]);
+  if (!h) return;
+  LAST = {h, pipe};
+  refreshProviderStatus();
+  LISTINGS = mkt ? mkt.signals : [];
+
+  const c = h.counts, e = (rep && rep.economics) || {};
+  const trusted = rep && rep.sample_trustworthy;
+  const accuracy = !rep ? '—'
+    : trusted ? esc(rep.directional_accuracy_display)
+    : (rep.n < rep.min_reputation_sample ? 'WITHHELD' : esc(rep.directional_accuracy_display));
+  const accSub = !rep ? ''
+    : trusted ? `from ${rep.n} scored signals`
+    : ((rep.sample_caveats || []).map(c => c.code).join(' · ') || 'qualified');
+  document.getElementById('kpis').innerHTML = [
+    ['Published', c.signals, `${c.listed} listed right now`],
+    ['Refused', c.rejections, 'unsupported evidence or disputed data'],
+    ['Sold', c.paid, `${c.deliveries} artifact(s) delivered`],
+    ['Resolved', c.outcomes, 'scored against Binance'],
+    ['Directional accuracy', accuracy, accSub],
+    ['Revenue', esc(e.gross_revenue || '0'),
+      `${esc(e.currency || '')} &middot; ${e.unique_buyers || 0} buyer(s)`],
+  ].map(([k,v,sub]) => `<div class="kpi"><div class="k">${k}</div>
+      <div class="v">${v}</div><div class="s">${sub}</div></div>`).join('');
+
+  if (pipe) {
+    document.getElementById('pipe').innerHTML = pipe.stages.map(st =>
+      `<div class="stage ${st.key === 'rejected' ? 'refuse' : ''}">
+         <div class="sn">${st.count}</div><div class="sl">${esc(st.label)}</div></div>`).join('');
+  }
+
+  document.querySelector('#mkt tbody').innerHTML = LISTINGS.length
+    ? LISTINGS.map(x => `<tr class="clickable" onclick="openSignal('${esc(x.signal_id)}')">
+        <td class="mono">${esc(x.signal_id.slice(0,14))}</td>
+        <td>${esc(x.asset)}</td><td>${esc(x.horizon)}</td>
+        <td class="num">${esc(x.price)}</td>
+        <td class="mono">${tt(x.matures_at)}</td>
+        <td><span class="pill neu">${esc(x.state)}</span></td>
+        <td><span class="pill ${esc(x.corroboration_verdict)}">${x.witnesses}&times;</span></td>
+        <td class="mono" style="font-size:10px;color:var(--faint)">${
+          esc(String(x.pricing_classification || '').replace('BASE_PRICE_',''))}</td>
+        <td class="mono">${hh(x.signal_hash)}</td></tr>`).join('')
+    : '<tr><td colspan="9" class="empty">No signals listed right now.</td></tr>';
+
   document.querySelector('#outcomes tbody').innerHTML = (oc && oc.outcomes.length)
     ? oc.outcomes.map(x => {
         const r = parseFloat(x.raw_return);
-        const cls = x.directional === 'CORRECT' ? 'ok'
-                  : x.directional === 'INCORRECT' ? 'bad' : 'mid';
-        return `<tr><td class="mono">${esc(x.signal_id.slice(0, 14))}</td>
+        return `<tr class="clickable" onclick="openSignal('${esc(x.signal_id)}')">
+          <td class="mono">${esc(x.signal_id.slice(0,12))}</td>
           <td>${esc(x.asset)}</td>
           <td><span class="pill ${esc(x.direction)}">${esc(x.direction)}</span></td>
-          <td class="mono">${esc(x.confidence)}</td>
-          <td class="mono">${esc(x.entry_price)}</td>
-          <td class="mono">${esc(x.exit_price)}</td>
-          <td class="mono" style="color:${r > 0 ? 'var(--long)' : r < 0 ? 'var(--short)' : 'var(--dim)'}">
-            ${(r * 100).toFixed(4)}%</td>
-          <td><span class="pill ${cls}">${esc(x.directional)}</span></td></tr>`;
+          <td class="num">${esc(x.confidence)}</td>
+          <td class="num">${esc(x.entry_price)}</td>
+          <td class="num">${esc(x.exit_price)}</td>
+          <td class="num" style="color:${retColor(r)}">${(r*100).toFixed(4)}%</td>
+          <td><span class="pill ${esc(x.directional)}">${esc(x.directional)}</span></td></tr>`;
       }).join('')
-    : '<tr><td colspan="8" class="muted">No signal has matured yet. Outcomes appear here once a horizon expires.</td></tr>';
+    : '<tr><td colspan="8" class="empty">No signal has matured yet. Outcomes appear here once a horizon expires.</td></tr>';
 
   if (rep) {
-    const rows = [
-      ['scored signals (n)', rep.scored_signals],
+    let caveatHtml = (rep.sample_caveats || []).map(c =>
+      `<div class="caveat"><span class="ct">${esc(c.code)}</span>${esc(c.detail)}</div>`).join('');
+    const dm = rep.direction_mix || {};
+    const dTot = Math.max(1, Object.values(dm).reduce((a,b) => a+b, 0));
+    const dColor = {LONG:'var(--long)', SHORT:'var(--short)',
+                    NEUTRAL:'var(--dim)', STAND_DOWN:'var(--warn)'};
+    if (Object.keys(dm).length) {
+      caveatHtml += `<div class="kv" style="border:none;padding-bottom:2px">
+          <span class="kk">sample composition</span>
+          <span class="vv">${Object.entries(dm).map(([k,v]) => `${esc(k)} ${v}`).join(' · ')}</span></div>
+        <div class="mixbar">${Object.entries(dm).map(([k,v]) =>
+          `<i style="width:${v/dTot*100}%;background:${dColor[k] || 'var(--dim)'}"></i>`).join('')}</div>
+        <div style="height:12px"></div>`;
+    }
+    document.getElementById('rep').innerHTML = caveatHtml + [
+      ['scored signals (n)', rep.n],
       ['minimum sample required', rep.min_reputation_sample],
       ['directional accuracy', rep.directional_accuracy_display],
+      ['direction concentration', rep.direction_concentration === null ? '—'
+        : `${(parseFloat(rep.direction_concentration)*100).toFixed(1)}%`],
       ['correct / incorrect / flat', `${rep.correct} / ${rep.incorrect} / ${rep.flat}`],
-      ['mean return', rep.mean_return ?? '—'],
-      ['cumulative return', rep.cumulative_return ?? '—'],
-      ['calibration', rep.calibration.note],
-      ['Brier score', rep.calibration.brier_score ?? 'INSUFFICIENT_SAMPLE'],
+      ['mean return', rep.mean_return === null ? '—' : rep.mean_return],
+      ['cumulative return', rep.cumulative_return === null ? '—' : rep.cumulative_return],
+      ['Brier score', rep.calibration.brier_score === null ? 'INSUFFICIENT_SAMPLE' : rep.calibration.brier_score],
+      ['stood down', rep.stood_down],
       ['awaiting outcome', rep.awaiting_outcome],
       ['unresolved', rep.unresolved],
-    ];
-    document.getElementById('rep').innerHTML = rows.map(([k, v]) =>
-      `<div class="kv"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('');
+    ].map(([k,v]) => `<div class="kv"><span class="kk">${esc(k)}</span>
+        <span class="vv">${esc(v)}</span></div>`).join('')
+      + `<div class="note">Below the minimum sample the accuracy figure is <b>withheld</b>,
+         not estimated. Above it, the figure is still <b>qualified</b> whenever the sample
+         is concentrated in one direction or one asset &mdash; a high score earned entirely
+         from SHORT calls during a downtrend measures the market, not the agent.</div>`;
+  }
+
+  if (rep && rep.calibration) {
+    const buckets = rep.calibration.buckets || [];
+    document.getElementById('cal').innerHTML = buckets.length
+      ? buckets.map(bk => {
+          const stated = parseFloat(bk.mean_confidence || 0) * 100;
+          const obs = bk.observed_accuracy === null ? null : parseFloat(bk.observed_accuracy) * 100;
+          return `<div class="calrow">
+            <div class="cb">${esc(bk.bucket)}</div>
+            <div class="caltrack">
+              <i class="stated" style="width:${stated}%"></i>
+              ${obs === null ? '' : `<i class="obs" style="width:${obs}%"></i>`}
+            </div>
+            <div class="cn">n=${bk.n}</div></div>`;
+        }).join('')
+        + `<div class="legend">
+             <span><i class="sw" style="background:rgba(91,140,255,.45)"></i>stated confidence</span>
+             <span><i class="sw" style="background:rgba(46,204,113,.6)"></i>observed accuracy</span>
+           </div>
+           <div class="note">${esc(rep.calibration.note)}</div>`
+      : '<div class="empty">No scored signals yet.</div>';
   }
 
   document.querySelector('#rej tbody').innerHTML = (rej && rej.rejections.length)
-    ? rej.rejections.map(x => `<tr><td class="mono">${t(x.created_at)}</td><td>${esc(x.asset)}</td>
+    ? rej.rejections.map(x => `<tr><td class="mono">${tt(x.created_at)}</td>
+        <td>${esc(x.asset)}</td>
         <td><span class="pill bad">${esc(x.reason_code)}</span></td>
-        <td class="muted" style="font-size:11px">${esc((x.detail || '').slice(0, 90))}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="muted">No drafts rejected yet.</td></tr>';
+        <td style="color:var(--dim);font-size:11px;white-space:normal">${
+          esc(String(x.detail || '').slice(0,110))}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">Nothing refused yet.</td></tr>';
 
   document.querySelector('#jrnl tbody').innerHTML = (jr && jr.entries.length)
-    ? jr.entries.map(x => `<tr><td class="mono">${x.seq}</td><td class="mono">${t(x.created_at)}</td>
-        <td class="mono">${esc(x.event)}</td>
-        <td class="mono">${esc((x.signal_id || '').slice(0, 14) || '—')}</td>
-        <td class="mono muted" style="font-size:10.5px">${esc(JSON.stringify(x.payload).slice(0, 110))}</td></tr>`).join('')
-    : '<tr><td colspan="5" class="muted">Journal is empty.</td></tr>';
+    ? jr.entries.map(x => `<tr><td class="mono" style="color:var(--faint)">${x.seq}</td>
+        <td class="mono">${tt(x.created_at)}</td>
+        <td class="mono" style="color:var(--acc)">${esc(x.event)}</td>
+        <td class="mono">${esc(String(x.signal_id || '').slice(0,14) || '—')}</td>
+        <td class="mono" style="color:var(--faint);font-size:10.5px;white-space:normal">${
+          esc(JSON.stringify(x.payload).slice(0,120))}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Journal is empty.</td></tr>';
+}
+
+let LAST = {};
+function renderSlow(){
+  if (!PS || !LAST.h) return;
+  const aos = PS.binance_agent_os, s = PS.settlement || {}, md = LAST.h.market_data;
+
+  document.getElementById('hstat').innerHTML =
+    `<span><span class="dot ${md.status === 'VERIFIED_LIVE' ? 'live' : 'off'}"></span>` +
+    `Binance ${esc(md.status)} &middot; ${md.latency_ms}ms</span>` +
+    (aos ? `<span><span class="dot ${aos.status === 'VERIFIED_LIVE' ? 'live'
+      : aos.status === 'UNAVAILABLE' ? 'off' : 'amber'}"></span>Agent OS ${esc(aos.status)}</span>` : '') +
+    `<span>env ${esc(LAST.h.environment)}</span>`;
+
+  const b = document.getElementById('banner');
+  if (s.status === 'SIMULATION') {
+    b.className = 'banner simu';
+    b.innerHTML = `<b>Settlement is SIMULATED.</b> The <code>signature_only</code> verifier
+      performs real EIP-712/EIP-3009 signature recovery and binds every payment to its
+      invoice &mdash; but <b>no funds move on any chain</b>. This is not testnet settlement
+      and not live settlement. Set <code>PROM_SETTLEMENT_VERIFIER=onchain</code> with a
+      funded receive address for real settlement.`;
+  } else if (s.status) {
+    b.className = 'banner realm';
+    b.innerHTML = `<b>Settlement verifier: ${esc(s.verifier)}</b> ${pill(s.status)} &mdash;
+      environment <b>${esc(s.environment)}</b>. ${esc(s.proves || '')}`;
+  }
+
+  let wh = '';
+  const latest = LISTINGS.find(x => x.corroboration_verdict === 'AGREED') || LISTINGS[0];
+  if (aos && latest) {
+    wh += `<div class="wit">
+      <div class="src"><div class="sname">Binance REST</div>
+        <div class="sval">${esc(latest.asset)}</div>
+        <div class="smeta">api.binance.com</div></div>
+      <div class="vs"><div class="dev" style="color:${
+        latest.corroboration_verdict === 'AGREED' ? 'var(--long)' : 'var(--warn)'}">${
+        fx(latest.corroboration_deviation_bps)}</div>
+        <div class="devl">bps apart</div></div>
+      <div class="src"><div class="sname">Agent OS CLI</div>
+        <div class="sval">${esc(aos.version || '—')}</div>
+        <div class="smeta">${esc(aos.transport || 'native')} &middot; ${esc(aos.api_env || '')}</div></div>
+    </div>`;
+  }
+  if (LAST.pipe) {
+    const co = LAST.pipe.corroboration;
+    const tot = Math.max(1, co.AGREED + co.UNAVAILABLE + co.DISPUTED);
+    wh += `<div class="bar">
+      <i style="width:${co.AGREED/tot*100}%;background:var(--long)"></i>
+      <i style="width:${co.UNAVAILABLE/tot*100}%;background:var(--warn)"></i>
+      <i style="width:${co.DISPUTED/tot*100}%;background:var(--short)"></i></div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--long)"></i>AGREED ${co.AGREED}</span>
+        <span><i class="sw" style="background:var(--warn)"></i>UNAVAILABLE ${co.UNAVAILABLE}</span>
+        <span><i class="sw" style="background:var(--short)"></i>DISPUTED ${co.DISPUTED}</span>
+      </div>`;
+  }
+  wh += `<div class="note"><b>UNAVAILABLE is not AGREED.</b> A snapshot with no second
+    witness is published and permanently recorded as single-witness &mdash; an absent
+    witness is never counted as confirmation. A <b>DISPUTED</b> snapshot is refused
+    outright and never becomes a sellable signal.</div>`;
+  document.getElementById('witness').innerHTML = wh;
+
+  let ph = `<div class="kv"><span class="kk">Binance spot (read-only)</span>
+    <span class="vv">${pill(PS.market_data.status)}</span></div>`;
+  if (aos) ph += `<div class="kv"><span class="kk">Binance Agent OS &middot;
+    <span style="color:var(--dim)">${esc(aos.version || 'binance-cli')}</span></span>
+    <span class="vv">${pill(aos.status)}</span></div>`;
+  ph += PS.model_providers.map(p => `<div class="kv"><span class="kk">${esc(p.provider)}${
+    p.active ? ' <span style="color:var(--acc)">&middot; ACTIVE</span>' : ''}${
+    p.is_llm ? '' : ' <span style="color:var(--faint)">(rule engine, not an LLM)</span>'}</span>
+    <span class="vv">${pill(p.status)}</span></div>`).join('');
+  ph += `<div class="kv"><span class="kk">x402 wire protocol v${PS.x402.version}</span>
+    <span class="vv">${pill(PS.x402.status)}</span></div>
+    <div class="kv"><span class="kk">settlement &middot; ${esc(s.verifier || '')}</span>
+    <span class="vv">${pill(s.status)}</span></div>
+    <div class="note">No Binance API key is held. There is no account, order or
+    withdrawal capability in this build &mdash; not disabled, <b>absent</b>.</div>`;
+  document.getElementById('providers').innerHTML = ph;
 }
 
 tick();

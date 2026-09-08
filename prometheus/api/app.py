@@ -293,6 +293,54 @@ def create_app() -> FastAPI:
             )
         return passport(row, db)
 
+    @app.get("/api/pipeline", tags=["status"])
+    def pipeline() -> dict[str, Any]:
+        """Live counts at each stage of the OBSERVE -> SCORE lifecycle.
+
+        Rejections are a first-class stage, not an error bucket: refusing to
+        publish is a product outcome and appears in the funnel beside the rest.
+        """
+        states = {
+            r["state"]: r["n"]
+            for r in db.query("SELECT state, COUNT(*) AS n FROM signals GROUP BY state")
+        }
+        rejects = {
+            r["reason_code"]: r["n"]
+            for r in db.query("SELECT reason_code, COUNT(*) AS n FROM rejections GROUP BY reason_code")
+        }
+        cor = {"AGREED": 0, "UNAVAILABLE": 0, "DISPUTED": rejects.get("CORROBORATION_FAILED", 0)}
+        for row in db.query("SELECT snapshot_json FROM signals"):
+            try:
+                v = (json.loads(row["snapshot_json"]).get("corroboration") or {}).get("verdict")
+            except (ValueError, TypeError):
+                continue
+            if v in cor:
+                cor[v] += 1
+
+        def n(*keys: str) -> int:
+            return sum(states.get(k, 0) for k in keys)
+
+        published = sum(states.values())
+        return {
+            "generated_at": now_iso(),
+            "stages": [
+                {"key": "observed", "label": "Observed",
+                 "count": published + sum(rejects.values())},
+                {"key": "rejected", "label": "Refused", "count": sum(rejects.values())},
+                {"key": "frozen", "label": "Frozen", "count": published},
+                {"key": "listed", "label": "Listed",
+                 "count": n("LISTED", "PURCHASED", "DELIVERED")},
+                {"key": "sold", "label": "Sold", "count": n("PURCHASED", "DELIVERED")},
+                {"key": "delivered", "label": "Delivered", "count": n("DELIVERED")},
+                {"key": "awaiting", "label": "Awaiting outcome", "count": n("AWAITING_OUTCOME")},
+                {"key": "scored", "label": "Scored",
+                 "count": n("MATURED", "SCORED", "VERIFIED")},
+            ],
+            "states": states,
+            "rejections_by_code": rejects,
+            "corroboration": cor,
+        }
+
     @app.get("/api/outcomes", tags=["audit"])
     def outcomes(limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
         """Resolved outcomes joined to the predictions that earned them.

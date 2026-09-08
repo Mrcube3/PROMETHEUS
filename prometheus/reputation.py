@@ -17,8 +17,17 @@ from .config import Config
 from .db import Database
 from .provenance import now_iso
 
-REPUTATION_VERSION = "reputation-1.0.0"
+REPUTATION_VERSION = "reputation-1.1.0"
 INSUFFICIENT = "INSUFFICIENT_SAMPLE"
+
+# A sample can clear the size threshold and still be worthless as evidence of
+# skill. If nearly every scored call points the same way, the record measures the
+# market's trend during the window, not the agent's judgement. That caveat travels
+# with the accuracy figure rather than being left for the reader to notice.
+CONCENTRATION_LIMIT = Decimal("0.80")
+CAVEAT_SINGLE_REGIME = "SINGLE_DIRECTION_SAMPLE"
+CAVEAT_SMALL_SAMPLE = "INSUFFICIENT_SAMPLE"
+CAVEAT_NARROW_ASSETS = "SINGLE_ASSET_SAMPLE"
 
 # Only directional predictions are scored for accuracy. Standing down is tracked
 # separately -- it is a decision, not a wrong answer.
@@ -88,6 +97,49 @@ def compute(db: Database, cfg: Config) -> dict[str, Any]:
 
     overall = _cohort(scored_rows, min_sample)
 
+    # --- sample composition -------------------------------------------------
+    dir_mix: dict[str, int] = {}
+    asset_mix: dict[str, int] = {}
+    for r in scored_rows:
+        dir_mix[r["direction"]] = dir_mix.get(r["direction"], 0) + 1
+        asset_mix[r["asset"]] = asset_mix.get(r["asset"], 0) + 1
+
+    total_scored = len(scored_rows)
+    caveats: list[dict[str, Any]] = []
+    concentration = None
+    if total_scored:
+        top_dir, top_n = max(dir_mix.items(), key=lambda kv: kv[1])
+        concentration = (Decimal(top_n) / Decimal(total_scored)).quantize(Decimal("0.0001"))
+        if concentration >= CONCENTRATION_LIMIT:
+            caveats.append({
+                "code": CAVEAT_SINGLE_REGIME,
+                "detail": (
+                    f"{top_n} of {total_scored} scored signals were {top_dir}. An accuracy "
+                    "figure drawn almost entirely from one direction measures the market's "
+                    "trend over this window, not the agent's judgement."
+                ),
+            })
+        top_asset, top_an = max(asset_mix.items(), key=lambda kv: kv[1])
+        if len(asset_mix) == 1 and total_scored >= 5:
+            caveats.append({
+                "code": CAVEAT_NARROW_ASSETS,
+                "detail": f"every scored signal was on {top_asset}; the record is single-asset.",
+            })
+    if total_scored < min_sample:
+        caveats.append({
+            "code": CAVEAT_SMALL_SAMPLE,
+            "detail": f"n={total_scored}, below the configured minimum of {min_sample}.",
+        })
+
+    # The headline is withheld whenever any caveat would make it misleading, not
+    # only when the sample is small.
+    trustworthy = not caveats
+    if not trustworthy:
+        overall["directional_accuracy_display"] = INSUFFICIENT if total_scored < min_sample else (
+            f"{overall['directional_accuracy_display']} (qualified)"
+            if overall["directional_accuracy"] else INSUFFICIENT
+        )
+
     def group(key: str) -> dict[str, Any]:
         buckets: dict[str, list[dict[str, Any]]] = {}
         for r in scored_rows:
@@ -115,6 +167,11 @@ def compute(db: Database, cfg: Config) -> dict[str, Any]:
         "stood_down": stood_down,
         "scored_signals": len(scored_rows),
         **overall,
+        "sample_trustworthy": trustworthy,
+        "sample_caveats": caveats,
+        "direction_mix": dict(sorted(dir_mix.items())),
+        "asset_mix": dict(sorted(asset_mix.items())),
+        "direction_concentration": None if concentration is None else str(concentration),
         "by_asset": group("asset"),
         "by_horizon": group("horizon"),
         "by_model_version": group("model_version"),
